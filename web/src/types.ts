@@ -9,6 +9,8 @@ export interface Lookups {
   periods: Rec[];
   settings: Record<string, string>;
   statuses: string[];
+  suppliers: Rec[];
+  supplier_types: string[];
   maint_types: string[];
   maint_priorities: string[];
   maint_statuses: string[];

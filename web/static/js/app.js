@@ -5,6 +5,7 @@ import { dashboardPage } from "./pages/dashboard.js";
 import { auditPage, depreciationPage, journalPage, periodsPage, transactionsPage } from "./pages/depreciation.js";
 import { maintenanceFormPage, maintenanceListPage } from "./pages/maintenance.js";
 import { reportPage, reportsHubPage } from "./pages/reports.js";
+import { supplierFormPage, suppliersListPage } from "./pages/suppliers.js";
 import { settingsPage } from "./pages/settings.js";
 import { clear, fail, h, icon } from "./ui.js";
 const ROUTES = [
@@ -13,6 +14,8 @@ const ROUTES = [
     { re: /^assets\/(new|\d+)$/, fn: assetFormPage, nav: "#/assets", crumb: "Fixed asset" },
     { re: /^maintenance$/, fn: maintenanceListPage, nav: "#/maintenance", crumb: "Maintenance orders" },
     { re: /^maintenance\/(new|\d+)$/, fn: maintenanceFormPage, nav: "#/maintenance", crumb: "Maintenance order" },
+    { re: /^suppliers$/, fn: suppliersListPage, nav: "#/suppliers", crumb: "Suppliers" },
+    { re: /^suppliers\/(new|\d+)$/, fn: supplierFormPage, nav: "#/suppliers", crumb: "Supplier" },
     { re: /^depreciation$/, fn: depreciationPage, nav: "#/depreciation", crumb: "Depreciation run" },
     { re: /^periods$/, fn: periodsPage, nav: "#/periods", crumb: "Depreciation periods" },
     { re: /^journal$/, fn: journalPage, nav: "#/journal", crumb: "Fixed asset journal" },
@@ -25,6 +28,7 @@ const ROUTES = [
 const NAV = [
     { section: "Workspaces", items: [{ label: "Fixed assets", icon: "home", href: "#/" }] },
     { section: "Common", items: [{ label: "All fixed assets", icon: "asset", href: "#/assets" }, { label: "New fixed asset", icon: "plus", href: "#/assets/new" }] },
+    { section: "Suppliers", items: [{ label: "Suppliers", icon: "truck", href: "#/suppliers" }, { label: "New supplier", icon: "plus", href: "#/suppliers/new" }] },
     { section: "Maintenance", items: [{ label: "Maintenance orders", icon: "wrench", href: "#/maintenance" }, { label: "New maintenance order", icon: "plus", href: "#/maintenance/new" }] },
     { section: "Periodic tasks", items: [{ label: "Depreciation run", icon: "calc", href: "#/depreciation" }, { label: "Depreciation periods", icon: "calendar", href: "#/periods" }] },
     { section: "Inquiries", items: [{ label: "Fixed asset journal", icon: "journal", href: "#/journal" }, { label: "Fixed asset transactions", icon: "list", href: "#/transactions" }, { label: "Audit log", icon: "audit", href: "#/audit" }] },

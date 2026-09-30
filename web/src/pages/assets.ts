@@ -1,4 +1,5 @@
 import { api, lookups } from "../api.js";
+import { addSupplierShortcut, supplierOptions } from "./suppliers.js";
 import { t } from "../i18n.js";
 import type { Col, Rec } from "../types.js";
 import {
@@ -96,7 +97,7 @@ export async function assetFormPage(root: HTMLElement, a: Args): Promise<void> {
     { name: "ResponsiblePerson", label: "Responsible person", maxlength: 120 },
   ];
   const purchase: FieldDef[] = [
-    { name: "SupplierName", label: "Supplier" }, { name: "InvoiceNumber", label: "Invoice number" },
+    { name: "SupplierID", label: "Supplier", type: "select", options: supplierOptions(L, asset?.SupplierID) }, { name: "InvoiceNumber", label: "Invoice number" },
     { name: "PurchaseOrderNumber", label: "Purchase order" }, { name: "WarrantyExpiryDate", label: "Warranty expiry", type: "date" },
   ];
   const ident: FieldDef[] = [{ name: "Manufacturer", label: "Manufacturer" }, { name: "ModelNumber", label: "Model" }, { name: "SerialNumber", label: "Serial number" }];
@@ -105,6 +106,7 @@ export async function assetFormPage(root: HTMLElement, a: Args): Promise<void> {
   let lastStart = v.DepreciationStartDate || v.InServiceDate || "";
   const init = { ...v, AssetCode: code };
   const forms = [general, cost, dep, place, purchase, ident, notes].map((defs) => new Form(defs, init));
+  addSupplierShortcut(forms[4], "SupplierID");
   const byName = (n: string) => forms.find((f) => f.defs.some((d) => d.name === n))!;
   if (disposed) forms.forEach((f) => f.defs.forEach((d) => f.setReadonly(d.name, true)));
 

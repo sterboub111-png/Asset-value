@@ -127,4 +127,27 @@ cost = reports.run_report(con, "maintenance-cost", {"mgroup": "category"})
 assert cost["rows"][0]["Cost"] == 350 and cost["rows"][0]["Orders"] == 1
 sch = reports.run_report(con, "maintenance-schedule", {"days": "3000"})
 assert sch["rows"] and sch["rows"][0]["Source"] == "Recurring due date", sch["rows"]
+
+# ---- suppliers
+sup = s.save_supplier(con, {"SupplierName": "Acme Trading", "SupplierNameAr": "شركة أكمي", "Phone": "+966 11 555 0100", "Email": "info@acme.sa",
+                            "TaxNumber": "300000000000003", "IBAN": "sa03 8000 0000 6080 1016 7519", "City": "Riyadh"})
+assert sup["SupplierCode"] == "SUP-0001" and sup["IBAN"] == "SA0380000000608010167519"
+expect_error(s.save_supplier, con, {"SupplierName": "acme trading"}, contains="already exists")
+expect_error(s.save_supplier, con, {"SupplierName": "Other", "TaxNumber": "300000000000003"}, contains="tax number")
+expect_error(s.save_supplier, con, {"SupplierName": "Bad", "Email": "nope"}, contains="Email")
+a3 = s.save_asset(con, {"AssetName": "Desk", "CategoryID": s.one(con, "SELECT CategoryID FROM tbl_AssetCategories WHERE CategoryCode='FUR'", raw=True)["CategoryID"],
+                        "AcquisitionDate": "2027-02-01", "AcquisitionCost": 900, "SupplierID": sup["SupplierID"], "InvoiceNumber": "A-77"})
+assert a3["SupplierName"] == "Acme Trading" and a3["AssetCode"] == "FUR-0001"
+mo = s.save_maintenance(con, {"AssetID": a3["AssetID"], "MaintenanceType": "Corrective", "Title": "Fix", "ScheduledDate": "2027-03-01", "SupplierID": sup["SupplierID"]})
+assert mo["Vendor"] == "Acme Trading"
+s.maintenance_action(con, mo["MaintenanceID"], "complete", {"CompletionDate": "2027-03-02", "Cost": 120})
+s.set_lang("ar"); assert s.list_assets(con, "Desk")[0]["SupplierName"] == "شركة أكمي"; s.set_lang("en")
+sm = reports.run_report(con, "supplier-summary", {})
+assert sm["rows"][0]["Purchases"] == 900 and sm["rows"][0]["MaintCost"] == 120 and sm["rows"][0]["Total"] == 1020, sm["rows"]
+sp = reports.run_report(con, "supplier-purchases", {"supplier": str(sup["SupplierID"])})
+assert sp["rows"][0]["AcquisitionCost"] == 900
+assert len(reports.run_report(con, "suppliers-directory", {"sactive": "1"})["rows"]) == 1
+expect_error(s.delete_supplier, con, sup["SupplierID"], contains="linked")
+s.save_supplier(con, {**sup, "SupplierName": "Acme Co", "IsActive": False}, sup["SupplierID"])
+assert s.get_asset(con, a3["AssetID"])["SupplierName"] == "Acme Co"
 print("All flow tests passed")

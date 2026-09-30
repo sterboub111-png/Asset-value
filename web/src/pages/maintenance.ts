@@ -1,4 +1,5 @@
 import { api, lookups } from "../api.js";
+import { addSupplierShortcut, supplierOptions } from "./suppliers.js";
 import { t } from "../i18n.js";
 import type { Col, Rec } from "../types.js";
 import { DataGrid, FieldDef, Form, clear, confirmDialog, dialog, fail, fastTab, fmtDate, fmtMoney, guard, h, page, pill, ribbon, toast, today } from "../ui.js";
@@ -13,14 +14,15 @@ export function statusPill(m: Rec): Node {
 }
 
 // ---- dialogs shared by list and form
-function completeDialog(m: Rec, done: () => void) {
+function completeDialog(m: Rec, L: Rec, done: () => void) {
   const form = new Form([
     { name: "CompletionDate", label: "Completion date", type: "date", required: true },
     { name: "Cost", label: "Cost", type: "number", step: "0.01" },
-    { name: "Vendor", label: "Vendor" }, { name: "PerformedBy", label: "Performed by" }, { name: "InvoiceNumber", label: "Invoice number" },
+    { name: "SupplierID", label: "Vendor", type: "select", options: supplierOptions(L, m.SupplierID) }, { name: "PerformedBy", label: "Performed by" }, { name: "InvoiceNumber", label: "Invoice number" },
     { name: "NextDueDate", label: "Next due date", type: "date", hint: "Optional: schedules the next service for this asset." },
     { name: "Notes", label: "Notes", type: "textarea", wide: true },
   ], { ...m, CompletionDate: today(), Cost: m.Cost || "" });
+  addSupplierShortcut(form, "SupplierID");
   dialog(t("Complete {0}", m.MaintenanceNo), form.el, [
     { label: t("Complete"), primary: true, onClick: async () => { if (!form.validate()) return false; await api.post(`/api/maintenance/${m.MaintenanceID}/complete`, form.get()); toast(t("Maintenance completed"), "ok"); done(); } },
     { label: t("Cancel") },
@@ -54,7 +56,7 @@ export async function maintenanceListPage(root: HTMLElement, a: Args): Promise<v
   const rb = ribbon([
     [{ label: t("New"), icon: "plus", primary: true, onClick: () => (location.hash = "#/maintenance/new") },
      { label: t("Edit"), icon: "edit", onClick: sel((r) => (location.hash = `#/maintenance/${r.MaintenanceID}`)) }],
-    [{ label: t("Start work"), icon: "play", onClick: sel((r) => startOrder(r, load)) }, { label: t("Complete"), icon: "check", onClick: sel((r) => completeDialog(r, load)) },
+    [{ label: t("Start work"), icon: "play", onClick: sel((r) => startOrder(r, load)) }, { label: t("Complete"), icon: "check", onClick: sel((r) => completeDialog(r, L, load)) },
      { label: t("Cancel order"), icon: "x", danger: true, onClick: sel((r) => cancelOrder(r, load)) }],
     [{ label: t("Refresh"), icon: "refresh", onClick: load }, { label: t("Reports"), icon: "report", onClick: () => (location.hash = "#/reports/maintenance-history") }],
   ]);
@@ -89,12 +91,13 @@ export async function maintenanceFormPage(root: HTMLElement, a: Args): Promise<v
     { name: "NextDueDate", label: "Next due date", type: "date", hint: "For recurring maintenance; appears in the schedule report." },
   ];
   const cost: FieldDef[] = [
-    { name: "Vendor", label: "Vendor" }, { name: "PerformedBy", label: "Performed by" }, { name: "InvoiceNumber", label: "Invoice number" },
+    { name: "SupplierID", label: "Vendor", type: "select", options: supplierOptions(L, m?.SupplierID) }, { name: "PerformedBy", label: "Performed by" }, { name: "InvoiceNumber", label: "Invoice number" },
     { name: "Cost", label: "Cost", type: "number", step: "0.01", hint: "Maintenance cost is an expense; it does not change the asset cost." },
   ];
   const notes: FieldDef[] = [{ name: "Notes", label: "Notes", type: "textarea", wide: true }];
   const init = { ...v, MaintenanceNo: m?.MaintenanceNo || t("(assigned on save)") };
   const forms = [general, schedule, cost, notes].map((d) => new Form(d, init));
+  addSupplierShortcut(forms[2], "SupplierID");
   if (closed) forms.forEach((f) => f.defs.forEach((d) => f.setReadonly(d.name, true)));
 
   const collect = (): Rec => Object.assign({}, ...forms.map((f) => f.get()));
@@ -115,7 +118,7 @@ export async function maintenanceFormPage(root: HTMLElement, a: Args): Promise<v
          if (await confirmDialog(t("Delete order {0}?", m!.MaintenanceNo), { danger: true, ok: t("Delete") })) { await api.del(`/api/maintenance/${m!.MaintenanceID}`); toast(t("Order deleted"), "ok"); location.hash = "#/maintenance"; }
        }) }],
     [{ label: t("Start work"), icon: "play", disabled: isNew || m?.Status !== "Planned", onClick: () => startOrder(m!, again) },
-     { label: t("Complete"), icon: "check", disabled: isNew || closed, onClick: () => completeDialog(m!, again) },
+     { label: t("Complete"), icon: "check", disabled: isNew || closed, onClick: () => completeDialog(m!, L, again) },
      { label: t("Cancel order"), icon: "x", danger: true, disabled: isNew || closed, onClick: () => cancelOrder(m!, again) }],
     [{ label: t("Back to list"), icon: "back", onClick: () => (location.hash = "#/maintenance") }],
   ]);

@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS tbl_Assets(
   LocationID INTEGER REFERENCES tbl_Locations(LocationID),
   CostCenterID INTEGER REFERENCES tbl_CostCenters(CostCenterID),
   ResponsiblePerson TEXT,
-  SupplierName TEXT, InvoiceNumber TEXT, PurchaseOrderNumber TEXT,
+  SupplierName TEXT, SupplierID INTEGER, InvoiceNumber TEXT, PurchaseOrderNumber TEXT,
   SerialNumber TEXT, ModelNumber TEXT, Manufacturer TEXT, WarrantyExpiryDate TEXT,
   DisposalDate TEXT, Notes TEXT,
   IsActive INTEGER NOT NULL DEFAULT 1,
@@ -96,6 +96,16 @@ CREATE TABLE IF NOT EXISTS tbl_Settings(
   SettingID INTEGER PRIMARY KEY AUTOINCREMENT,
   SettingKey TEXT NOT NULL UNIQUE, SettingValue TEXT, SettingDescription TEXT,
   IsActive INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS tbl_Suppliers(
+  SupplierID INTEGER PRIMARY KEY AUTOINCREMENT,
+  SupplierCode TEXT NOT NULL UNIQUE,
+  SupplierName TEXT NOT NULL, SupplierNameAr TEXT,
+  SupplierType TEXT NOT NULL DEFAULT 'Supplier',
+  ContactPerson TEXT, Phone TEXT, Mobile TEXT, Email TEXT, Website TEXT,
+  Address TEXT, City TEXT, Country TEXT,
+  TaxNumber TEXT, CRNumber TEXT, PaymentTerms TEXT, BankName TEXT, IBAN TEXT,
+  Notes TEXT, IsActive INTEGER NOT NULL DEFAULT 1,
+  CreatedAt TEXT, CreatedBy TEXT, ModifiedAt TEXT, ModifiedBy TEXT);
 CREATE TABLE IF NOT EXISTS tbl_Maintenance(
   MaintenanceID INTEGER PRIMARY KEY AUTOINCREMENT,
   MaintenanceNo TEXT NOT NULL UNIQUE,
@@ -106,7 +116,7 @@ CREATE TABLE IF NOT EXISTS tbl_Maintenance(
   Status TEXT NOT NULL DEFAULT 'Planned',
   ScheduledDate TEXT NOT NULL, StartDate TEXT, CompletionDate TEXT, NextDueDate TEXT,
   OutOfService INTEGER NOT NULL DEFAULT 0,
-  Vendor TEXT, PerformedBy TEXT, InvoiceNumber TEXT, Cost REAL NOT NULL DEFAULT 0,
+  Vendor TEXT, SupplierID INTEGER, PerformedBy TEXT, InvoiceNumber TEXT, Cost REAL NOT NULL DEFAULT 0,
   Notes TEXT, CreatedAt TEXT, CreatedBy TEXT, ModifiedAt TEXT, ModifiedBy TEXT);
 CREATE INDEX IF NOT EXISTS ix_mt_asset ON tbl_Maintenance(AssetID);
 CREATE INDEX IF NOT EXISTS ix_mt_status ON tbl_Maintenance(Status);
@@ -166,9 +176,10 @@ def _seed_arabic(con) -> None:
 def init_db() -> None:
     con = connect()
     con.executescript(SCHEMA)
-    for table, col in ARABIC_COLUMNS:  # upgrade databases created before Arabic names existed
+    for table, col, ctype in [(t, c, "TEXT") for t, c in ARABIC_COLUMNS] + [("tbl_Assets", "SupplierID", "INTEGER"), ("tbl_Maintenance", "SupplierID", "INTEGER")]:
+        # upgrade databases created before these columns existed
         if col not in [r["name"] for r in con.execute(f"PRAGMA table_info({table})")]:
-            con.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ctype}")
     _seed_arabic(con)
     for key, val, desc in DEFAULT_SETTINGS:
         con.execute(

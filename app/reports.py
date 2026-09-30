@@ -17,6 +17,9 @@ REPORTS = [
     dict(id="transactions", group="Transactions", params=["from", "to", "type"]),
     dict(id="fully-depreciated", group="Exceptions", params=["as_of"]),
     dict(id="warranty-expiry", group="Exceptions", params=["days"]),
+    dict(id="suppliers-directory", group="Suppliers", params=["sactive", "stype"]),
+    dict(id="supplier-purchases", group="Suppliers", params=["from", "to", "supplier"]),
+    dict(id="supplier-summary", group="Suppliers", params=["from", "to"]),
     dict(id="maintenance-history", group="Maintenance", params=["from", "to", "mstatus", "mtype", "category"]),
     dict(id="maintenance-cost", group="Maintenance", params=["from", "to", "mgroup"]),
     dict(id="maintenance-schedule", group="Maintenance", params=["days"]),
@@ -297,7 +300,66 @@ def maintenance_schedule(con, p):
                 rows=out, totals=[], subtitle=f"Due within {days} days")
 
 
-BUILDERS = {"maintenance-history": maintenance_history, "maintenance-cost": maintenance_cost, "maintenance-schedule": maintenance_schedule,
+def suppliers_directory(con, p):
+    sql, args = "SELECT * FROM tbl_Suppliers WHERE 1=1", []
+    if p.get("sactive") in ("1", "0"):
+        sql += " AND IsActive=?"
+        args.append(int(p["sactive"]))
+    if p.get("stype"):
+        sql += " AND SupplierType=?"
+        args.append(p["stype"])
+    data = rows(con, sql + " ORDER BY SupplierName", args)
+    for r in data:
+        r["Status"] = "Active" if r["IsActive"] else "Inactive"
+    return dict(columns=_cols(("SupplierCode", "Code", "text"), ("SupplierName", "Name", "text"), ("SupplierType", "Type", "text"),
+                              ("ContactPerson", "Contact person", "text"), ("Phone", "Phone", "text"), ("Mobile", "Mobile", "text"),
+                              ("Email", "Email", "text"), ("City", "City", "text"), ("Country", "Country", "text"),
+                              ("TaxNumber", "Tax number", "text"), ("PaymentTerms", "Payment terms", "text"), ("Status", "Status", "text")),
+                rows=data, totals=[], subtitle=f"{len(data)} suppliers")
+
+
+def supplier_purchases(con, p):
+    f, t = _mdate(p, "from", "1900-01-01"), _mdate(p, "to", "2999-12-31")
+    sql = """SELECT S.SupplierID, S.SupplierCode, S.SupplierName, S.SupplierNameAr, A.AssetCode, A.AssetName, A.AssetNameAr, C.CategoryName, C.CategoryNameAr,
+             A.AcquisitionDate, A.InvoiceNumber, A.PurchaseOrderNumber, A.AcquisitionCost
+             FROM tbl_Assets A JOIN tbl_Suppliers S ON S.SupplierID=A.SupplierID LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID
+             WHERE A.AcquisitionDate BETWEEN ? AND ?"""
+    args = [f, t]
+    if p.get("supplier"):
+        sql += " AND S.SupplierID=?"
+        args.append(p["supplier"])
+    data = rows(con, sql + " ORDER BY S.SupplierName, A.AcquisitionDate", args)
+    for r in data:
+        r["Supplier"] = f"{r['SupplierCode']} - {r['SupplierName']}"
+    return dict(columns=_cols(("AcquisitionDate", "Date", "date"), ("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"),
+                              ("CategoryName", "Group", "text"), ("InvoiceNumber", "Invoice", "text"), ("PurchaseOrderNumber", "Purchase order", "text"),
+                              ("AcquisitionCost", "Cost", "money")),
+                rows=data, group_by="Supplier", totals=["AcquisitionCost"],
+                subtitle=f"{f if f > '1901' else 'Beginning'} to {t if t < '2999' else 'today'}")
+
+
+def supplier_summary(con, p):
+    f, t = _mdate(p, "from", "1900-01-01"), _mdate(p, "to", "2999-12-31")
+    data = rows(con, """SELECT S.SupplierCode, S.SupplierName, S.SupplierNameAr, S.SupplierType,
+        (SELECT COUNT(*) FROM tbl_Assets A WHERE A.SupplierID=S.SupplierID AND A.AcquisitionDate BETWEEN ? AND ?) AS Assets,
+        (SELECT COALESCE(SUM(A.AcquisitionCost),0) FROM tbl_Assets A WHERE A.SupplierID=S.SupplierID AND A.AcquisitionDate BETWEEN ? AND ?) AS Purchases,
+        (SELECT COUNT(*) FROM tbl_Maintenance M WHERE M.SupplierID=S.SupplierID AND M.Status='Completed' AND M.CompletionDate BETWEEN ? AND ?) AS Orders,
+        (SELECT COALESCE(SUM(M.Cost),0) FROM tbl_Maintenance M WHERE M.SupplierID=S.SupplierID AND M.Status='Completed' AND M.CompletionDate BETWEEN ? AND ?) AS MaintCost
+        FROM tbl_Suppliers S ORDER BY S.SupplierName""", (f, t) * 4)
+    data = [r for r in data if r["Assets"] or r["Orders"]]
+    for r in data:
+        r["Purchases"], r["MaintCost"] = r2(r["Purchases"]), r2(r["MaintCost"])
+        r["Total"] = r2(r["Purchases"] + r["MaintCost"])
+    data.sort(key=lambda r: -r["Total"])
+    return dict(columns=_cols(("SupplierCode", "Code", "text"), ("SupplierName", "Supplier", "text"), ("SupplierType", "Type", "text"),
+                              ("Assets", "Assets purchased", "int"), ("Purchases", "Purchases", "money"), ("Orders", "Maintenance orders", "int"),
+                              ("MaintCost", "Maintenance cost", "money"), ("Total", "Total spend", "money")),
+                rows=data, totals=["Assets", "Purchases", "Orders", "MaintCost", "Total"],
+                subtitle=f"{f if f > '1901' else 'Beginning'} to {t if t < '2999' else 'today'}")
+
+
+BUILDERS = {"suppliers-directory": suppliers_directory, "supplier-purchases": supplier_purchases, "supplier-summary": supplier_summary,
+            "maintenance-history": maintenance_history, "maintenance-cost": maintenance_cost, "maintenance-schedule": maintenance_schedule,
             "asset-register": asset_register, "asset-summary": asset_summary, "rollforward": rollforward,
             "depreciation-schedule": depreciation_schedule, "depreciation-journal": depreciation_journal,
             "gl-balances": gl_balances, "disposals": disposals, "transactions": transactions_report,

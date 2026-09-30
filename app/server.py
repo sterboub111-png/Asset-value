@@ -141,6 +141,21 @@ def _md2(c, i): return s.delete_maintenance(c.con, int(i))
 @route("POST", "/api/maintenance/(\\d+)/(start|complete|cancel)")
 def _ma2(c, i, act): return s.maintenance_action(c.con, int(i), act, c.body)
 
+@route("GET", "/api/suppliers")
+def _sl(c): return s.list_suppliers(c.con, c.q("q"), c.q("active"), c.q("type"))
+
+@route("POST", "/api/suppliers")
+def _sc(c): return s.save_supplier(c.con, c.body)
+
+@route("GET", "/api/suppliers/(\\d+)")
+def _sg2(c, i): return s.get_supplier(c.con, int(i))
+
+@route("PUT", "/api/suppliers/(\\d+)")
+def _su(c, i): return s.save_supplier(c.con, c.body, int(i))
+
+@route("DELETE", "/api/suppliers/(\\d+)")
+def _sd(c, i): return s.delete_supplier(c.con, int(i))
+
 @route("GET", "/api/journal")
 def _j(c): return s.journal(c.con, c.q("period"), c.q("type"))
 

@@ -45,6 +45,7 @@ const ICONS = {
     print: '<path d="M4.5 6V2h7v4M4.5 11.5h-2v-5h11v5h-2M4.5 9.5h7v4h-7z"/>', attach: '<path d="M11.5 6.5 7 11a2 2 0 0 1-2.8-2.8l5-5a3 3 0 0 1 4.3 4.2l-5.2 5.2"/>',
     moon: '<path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z"/>', sun: '<circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3"/>',
     wrench: '<path d="M10.5 2.5a3.3 3.3 0 0 0-3.1 4.4L2.5 11.8a1.4 1.4 0 0 0 2 2l4.9-4.9a3.3 3.3 0 0 0 4.4-3.1l-2 1.6-1.8-.4-.4-1.8z"/>',
+    truck: '<path d="M1.5 4h8v7h-8zM9.5 6.5h3l2 2V11h-5zM4.5 13a1.3 1.3 0 1 0 0-.01zM11.5 13a1.3 1.3 0 1 0 0-.01z"/>',
     globe: '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>', back: '<path d="M9.5 3 4.5 8l5 5M4.5 8h9"/>',
     lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>', unlock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 4.8-1"/>',
     play: '<path d="M4.5 2.5v11l9-5.5z"/>', filter: '<path d="M2 3h12l-4.5 5.5V13l-3-1.5V8.5z"/>', audit: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14M5 7l1.5 1.5L9 5.5"/>',
@@ -211,6 +212,7 @@ export class Form {
         return i instanceof HTMLInputElement && i.type === "checkbox" ? String(i.checked) : i.value;
     }
     input(name) { return this.inputs.get(name); }
+    wrapOf(name) { return this.wraps.get(name); }
     setReadonly(name, ro) {
         const i = this.inputs.get(name);
         const attr = i instanceof HTMLSelectElement || (i instanceof HTMLInputElement && i.type === "checkbox") ? "disabled" : "readonly";

@@ -203,6 +203,8 @@ def lookups(con) -> dict:
         "costcenters": master_list(con, "costcenters"),
         "glaccounts": master_list(con, "glaccounts"),
         "methods": master_list(con, "methods"),
+        "suppliers": rows(con, "SELECT SupplierID,SupplierCode,SupplierName,SupplierNameAr,IsActive FROM tbl_Suppliers ORDER BY SupplierName", raw=True),
+        "supplier_types": SUPPLIER_TYPES,
         "periods": rows(con, "SELECT * FROM tbl_DepreciationPeriods ORDER BY StartDate"),
         "settings": get_settings(con),
         "statuses": ASSET_STATUSES,
@@ -264,7 +266,7 @@ ASSET_FIELDS = ["AssetName", "AssetNameAr", "AssetDescription", "CategoryID", "A
 
 BOOK_SQL = """
 SELECT A.*, C.CategoryCode, C.CategoryName, C.CategoryNameAr, M.MethodCode, M.MethodName, M.MethodNameAr,
-       L.LocationName, L.LocationNameAr, L.LocationCode, CC.CostCenterName, CC.CostCenterNameAr, CC.CostCenterCode,
+       L.LocationName, L.LocationNameAr, L.LocationCode, CC.CostCenterName, CC.CostCenterNameAr, CC.CostCenterCode, SP.SupplierNameAr,
        COALESCE(A.OpeningAccumDep,0) + COALESCE((SELECT SUM(PeriodDepreciation) FROM tbl_Depreciation D
             WHERE D.AssetID=A.AssetID AND D.PostingStatus='POSTED'),0) AS AccumDep
 FROM tbl_Assets A
@@ -272,6 +274,7 @@ LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID
 LEFT JOIN tbl_DepreciationMethods M ON M.MethodID=A.MethodID
 LEFT JOIN tbl_Locations L ON L.LocationID=A.LocationID
 LEFT JOIN tbl_CostCenters CC ON CC.CostCenterID=A.CostCenterID
+LEFT JOIN tbl_Suppliers SP ON SP.SupplierID=A.SupplierID
 """
 
 
@@ -367,7 +370,13 @@ def _clean_asset(con, data: dict, existing: dict | None) -> dict:
     v["OpeningNBV"] = v["AcquisitionCost"] - v["OpeningAccumDep"]
     for f in ("LocationID", "CostCenterID"):
         v[f] = int(data.get(f) or 0) or None
-    for f in ("AssetDescription", "ResponsiblePerson", "SupplierName", "InvoiceNumber", "PurchaseOrderNumber",
+    sid = int(data.get("SupplierID") or 0) or None
+    sup = one(con, "SELECT SupplierName FROM tbl_Suppliers WHERE SupplierID=?", (sid,), raw=True) if sid else None
+    if sid and not sup:
+        raise ApiError("Supplier not found")
+    v["SupplierID"] = sid
+    v["SupplierName"] = sup["SupplierName"] if sup else None
+    for f in ("AssetDescription", "ResponsiblePerson", "InvoiceNumber", "PurchaseOrderNumber",
               "SerialNumber", "ModelNumber", "Manufacturer", "Notes"):
         v[f] = (data.get(f) or "").strip() or None
     v["WarrantyExpiryDate"] = parse_date(data.get("WarrantyExpiryDate"), "Warranty expiry date")
@@ -861,6 +870,17 @@ def _next_maint_no(con) -> str:
     return f"MT-{mx + 1:04d}"
 
 
+def _vendor(con, data: dict) -> dict:
+    """Vendor of a maintenance order: a registered supplier (preferred) or free text."""
+    sid = int(data.get("SupplierID") or 0) or None
+    if sid:
+        sup = one(con, "SELECT SupplierName FROM tbl_Suppliers WHERE SupplierID=?", (sid,), raw=True)
+        if not sup:
+            raise ApiError("Supplier not found")
+        return {"SupplierID": sid, "Vendor": sup["SupplierName"]}
+    return {"SupplierID": None, "Vendor": (data.get("Vendor") or "").strip() or None}
+
+
 def _clean_maint(con, data: dict) -> dict:
     v: dict[str, Any] = {}
     aid = int(data.get("AssetID") or 0)
@@ -883,8 +903,9 @@ def _clean_maint(con, data: dict) -> dict:
     v["NextDueDate"] = parse_date(data.get("NextDueDate"), "Next due date")
     v["Cost"] = num(data.get("Cost"), "Cost", 0, 0)
     v["OutOfService"] = 1 if data.get("OutOfService") in (True, 1, "1", "true") else 0
-    for f in ("Description", "Vendor", "PerformedBy", "InvoiceNumber", "Notes"):
+    for f in ("Description", "PerformedBy", "InvoiceNumber", "Notes"):
         v[f] = (data.get(f) or "").strip() or None
+    v.update(_vendor(con, data))
     return v
 
 
@@ -954,10 +975,11 @@ def maintenance_action(con, mid: int, action: str, data: dict) -> dict:
         nxt = parse_date(data.get("NextDueDate"), "Next due date") or m["NextDueDate"]
         if nxt and nxt <= done:
             raise ApiError("Next due date must be after the completion date")
+        ven = _vendor(con, data) if (data.get("SupplierID") or data.get("Vendor")) else {"SupplierID": m["SupplierID"], "Vendor": m["Vendor"]}
         con.execute("UPDATE tbl_Maintenance SET Status='Completed',StartDate=?,CompletionDate=?,Cost=?,NextDueDate=?,"
-                    "Vendor=COALESCE(?,Vendor),PerformedBy=COALESCE(?,PerformedBy),InvoiceNumber=COALESCE(?,InvoiceNumber),"
+                    "Vendor=?,SupplierID=?,PerformedBy=COALESCE(?,PerformedBy),InvoiceNumber=COALESCE(?,InvoiceNumber),"
                     "Notes=COALESCE(?,Notes),ModifiedAt=?,ModifiedBy=? WHERE MaintenanceID=?",
-                    (start, done, cost, nxt, (data.get("Vendor") or "").strip() or None, (data.get("PerformedBy") or "").strip() or None,
+                    (start, done, cost, nxt, ven["Vendor"], ven["SupplierID"], (data.get("PerformedBy") or "").strip() or None,
                      (data.get("InvoiceNumber") or "").strip() or None, (data.get("Notes") or "").strip() or None, now(), USER, mid))
         _release_asset(con, m)
     elif action == "cancel":
@@ -980,3 +1002,104 @@ def delete_maintenance(con, mid: int) -> dict:
     audit(con, "DELETE", "tbl_Maintenance", mid, m["MaintenanceNo"])
     con.commit()
     return {"deleted": mid}
+
+
+# ---------------------------------------------------------------- suppliers
+SUPPLIER_TYPES = ["Supplier", "Manufacturer", "Maintenance provider", "Service provider"]
+SUPPLIER_FIELDS = ["SupplierName", "SupplierNameAr", "SupplierType", "ContactPerson", "Phone", "Mobile", "Email", "Website", "Address",
+                   "City", "Country", "TaxNumber", "CRNumber", "PaymentTerms", "BankName", "IBAN", "Notes"]
+
+SUPPLIER_LIST_SQL = """SELECT S.*,
+  (SELECT COUNT(*) FROM tbl_Assets A WHERE A.SupplierID=S.SupplierID) AS AssetCount,
+  (SELECT COALESCE(SUM(A.AcquisitionCost),0) FROM tbl_Assets A WHERE A.SupplierID=S.SupplierID) AS PurchaseTotal,
+  (SELECT COUNT(*) FROM tbl_Maintenance M WHERE M.SupplierID=S.SupplierID) AS MaintenanceCount,
+  (SELECT COALESCE(SUM(M.Cost),0) FROM tbl_Maintenance M WHERE M.SupplierID=S.SupplierID AND M.Status='Completed') AS MaintenanceTotal
+  FROM tbl_Suppliers S"""
+
+
+def list_suppliers(con, q: str = "", status: str = "", stype: str = "") -> list[dict]:
+    sql, args = SUPPLIER_LIST_SQL + " WHERE 1=1", []
+    if status in ("1", "0"):
+        sql += " AND S.IsActive=?"
+        args.append(int(status))
+    if stype:
+        sql += " AND S.SupplierType=?"
+        args.append(stype)
+    if q:
+        sql += " AND (S.SupplierCode LIKE ? OR S.SupplierName LIKE ? OR S.SupplierNameAr LIKE ? OR S.ContactPerson LIKE ? OR S.Phone LIKE ? OR S.Mobile LIKE ? OR S.Email LIKE ? OR S.TaxNumber LIKE ?)"
+        args += [f"%{q}%"] * 8
+    return rows(con, sql + " ORDER BY S.SupplierName", args)
+
+
+def get_supplier(con, sid: int) -> dict:
+    sup = one(con, SUPPLIER_LIST_SQL + " WHERE S.SupplierID=?", (sid,), raw=True)
+    if not sup:
+        raise ApiError("Supplier not found", 404)
+    sup["assets"] = rows(con, """SELECT A.AssetID, A.AssetCode, A.AssetName, A.AssetNameAr, A.AcquisitionDate, A.InvoiceNumber, A.AcquisitionCost, A.AssetStatus
+        FROM tbl_Assets A WHERE A.SupplierID=? ORDER BY A.AcquisitionDate DESC""", (sid,))
+    sup["maintenance"] = rows(con, """SELECT M.MaintenanceID, M.MaintenanceNo, M.ScheduledDate, M.Title, M.Status, M.Cost, A.AssetCode
+        FROM tbl_Maintenance M JOIN tbl_Assets A ON A.AssetID=M.AssetID WHERE M.SupplierID=? ORDER BY M.ScheduledDate DESC""", (sid,))
+    return sup
+
+
+def _next_supplier_code(con) -> str:
+    mx = 0
+    for r in con.execute("SELECT SupplierCode FROM tbl_Suppliers"):
+        m = re.fullmatch(r"SUP-(\d+)", r["SupplierCode"])
+        if m:
+            mx = max(mx, int(m.group(1)))
+    return f"SUP-{mx + 1:04d}"
+
+
+def save_supplier(con, data: dict, sid: int | None = None) -> dict:
+    v: dict[str, Any] = {}
+    for f in SUPPLIER_FIELDS:
+        v[f] = (data.get(f) or "").strip() or None if isinstance(data.get(f), (str, type(None))) else data.get(f)
+    if not v["SupplierName"]:
+        raise ApiError("Supplier name is required")
+    v["SupplierType"] = v["SupplierType"] or "Supplier"
+    if v["SupplierType"] not in SUPPLIER_TYPES:
+        raise ApiError("Invalid supplier type")
+    if v["Email"] and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v["Email"]):
+        raise ApiError("Email address is not valid")
+    if v["IBAN"]:
+        v["IBAN"] = re.sub(r"\s+", "", v["IBAN"]).upper()
+    for f in ("Phone", "Mobile"):
+        if v[f] and not re.fullmatch(r"[+0-9 ()\-./]{5,25}", v[f]):
+            raise ApiError(f"{f} is not a valid phone number")
+    dup = one(con, "SELECT SupplierCode FROM tbl_Suppliers WHERE lower(SupplierName)=lower(?) AND SupplierID<>?", (v["SupplierName"], sid or 0), raw=True)
+    if dup:
+        raise ApiError(f"A supplier with this name already exists ({dup['SupplierCode']})")
+    if v["TaxNumber"]:
+        dup = one(con, "SELECT SupplierCode FROM tbl_Suppliers WHERE TaxNumber=? AND SupplierID<>?", (v["TaxNumber"], sid or 0), raw=True)
+        if dup:
+            raise ApiError(f"This tax number already belongs to supplier {dup['SupplierCode']}")
+    active = 0 if data.get("IsActive") in (False, 0, "0", "false") else 1
+    if sid is None:
+        code = _next_supplier_code(con)
+        cur = con.execute(f"INSERT INTO tbl_Suppliers(SupplierCode,{','.join(v)},IsActive,CreatedAt,CreatedBy) VALUES(?,{','.join('?' * len(v))},?,?,?)",
+                          [code, *v.values(), active, now(), USER])
+        sid = cur.lastrowid
+        audit(con, "CREATE", "tbl_Suppliers", sid, f"{code} {v['SupplierName']}")
+    else:
+        cur_s = one(con, "SELECT SupplierCode, SupplierName FROM tbl_Suppliers WHERE SupplierID=?", (sid,), raw=True)
+        if not cur_s:
+            raise ApiError("Supplier not found", 404)
+        con.execute(f"UPDATE tbl_Suppliers SET {','.join(k + '=?' for k in v)},IsActive=?,ModifiedAt=?,ModifiedBy=? WHERE SupplierID=?",
+                    [*v.values(), active, now(), USER, sid])
+        if cur_s["SupplierName"] != v["SupplierName"]:  # keep the denormalised names on linked records in step
+            con.execute("UPDATE tbl_Assets SET SupplierName=? WHERE SupplierID=?", (v["SupplierName"], sid))
+            con.execute("UPDATE tbl_Maintenance SET Vendor=? WHERE SupplierID=?", (v["SupplierName"], sid))
+        audit(con, "UPDATE", "tbl_Suppliers", sid, cur_s["SupplierCode"])
+    con.commit()
+    return get_supplier(con, sid)
+
+
+def delete_supplier(con, sid: int) -> dict:
+    sup = get_supplier(con, sid)
+    if sup["assets"] or sup["maintenance"]:
+        raise ApiError("This supplier is linked to assets or maintenance orders and cannot be deleted. Mark it inactive instead.")
+    con.execute("DELETE FROM tbl_Suppliers WHERE SupplierID=?", (sid,))
+    audit(con, "DELETE", "tbl_Suppliers", sid, sup["SupplierCode"])
+    con.commit()
+    return {"deleted": sid}
