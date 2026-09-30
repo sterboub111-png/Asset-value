@@ -112,6 +112,8 @@ MASTERS: dict[str, dict] = {
                                 ("tbl_AssetCategories", "DepExpenseAccountID"),
                                 ("tbl_AssetCategories", "GainAccountID"), ("tbl_AssetCategories", "LossAccountID")],
                        order="AccountCode"),
+    "currencies": dict(table="tbl_Currencies", pk="CurrencyID", code="CurrencyCode", name="CurrencyName",
+                       fields=["CurrencyCode", "CurrencyName", "CurrencyNameAr", "Symbol", "IsActive"], used_by=[], order="CurrencyCode"),
     "methods": dict(table="tbl_DepreciationMethods", pk="MethodID", code="MethodCode", name="MethodName",
                     fields=["MethodCode", "MethodName", "MethodNameAr", "IsActive"],
                     used_by=[("tbl_Assets", "MethodID"), ("tbl_AssetCategories", "MethodID")], order="MethodCode"),
@@ -145,6 +147,15 @@ def master_save(con, name: str, data: dict, rec_id: int | None = None) -> dict:
     for req in (m["code"], m["name"]):
         if req in vals and not vals[req]:
             raise ApiError(f"{req} is required")
+    if name == "currencies":
+        if "CurrencyCode" in vals:
+            vals["CurrencyCode"] = (vals["CurrencyCode"] or "").upper()
+            if not re.fullmatch(r"[A-Z]{3}", vals["CurrencyCode"]):
+                raise ApiError("Currency code must be 3 letters (ISO 4217)")
+        if vals.get("IsActive") == 0 and rec_id:
+            cur = one(con, "SELECT CurrencyCode FROM tbl_Currencies WHERE CurrencyID=?", (rec_id,), raw=True)
+            if cur and cur["CurrencyCode"] == get_settings(con).get("DefaultCurrency"):
+                raise ApiError("The default currency cannot be made inactive")
     if name == "categories":
         if vals.get("UsefulLifeYears") not in (None, ""):
             life = num(vals["UsefulLifeYears"], "Useful life", None, 0)
@@ -171,6 +182,10 @@ def master_save(con, name: str, data: dict, rec_id: int | None = None) -> dict:
 
 def master_delete(con, name: str, rec_id: int) -> dict:
     m = _master(name)
+    if name == "currencies":
+        cur = one(con, "SELECT CurrencyCode FROM tbl_Currencies WHERE CurrencyID=?", (rec_id,), raw=True)
+        if cur and cur["CurrencyCode"] == get_settings(con).get("DefaultCurrency"):
+            raise ApiError("The default currency cannot be deleted")
     for table, col in m["used_by"]:
         if one(con, f"SELECT 1 x FROM {table} WHERE {col}=? LIMIT 1", (rec_id,)):
             raise ApiError("This record is in use and cannot be deleted. Mark it inactive instead.")
@@ -190,6 +205,35 @@ def save_settings(con, data: dict) -> dict:
             raise ApiError("Fiscal year start month must be 1-12")
         if k == "AssetCodePrefix" and not v:
             raise ApiError("Asset code prefix is required")
+        if k == "DefaultCurrency" and not one(con, "SELECT 1 x FROM tbl_Currencies WHERE CurrencyCode=? AND IsActive=1", (v,)):
+            raise ApiError("Choose a currency from the list")
+        if k == "VATRate":
+            try:
+                ok = 0 <= float(v) <= 100
+            except ValueError:
+                ok = False
+            if not ok:
+                raise ApiError("VAT rate must be between 0 and 100")
+        if k in ("VATEnabled", "VATDefaultApplicable", "VATDefaultInclusive"):
+            v = "1" if v in ("1", "true", "True") else "0"
+        if k == "BackupSchedule" and v not in ("OFF", "DAILY", "WEEKLY", "MONTHLY", "QUARTERLY"):
+            raise ApiError("Invalid backup frequency")
+        if k == "BackupTime" and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):
+            raise ApiError("Backup time must be HH:MM")
+        if k == "BackupWeekday" and v not in [str(i) for i in range(7)]:
+            raise ApiError("Invalid weekday")
+        if k == "BackupDayOfMonth" and not (v.isdigit() and 1 <= int(v) <= 28):
+            raise ApiError("Day of month must be 1-28")
+        if k == "BackupKeep" and not (v.isdigit() and int(v) <= 999):
+            raise ApiError("Backups to keep must be 0-999")
+        if k in ("BackupFolder", "AttachmentFolder") and v:
+            try:
+                Path(v).mkdir(parents=True, exist_ok=True)
+                probe = Path(v) / ".gooya_write_test"
+                probe.write_text("ok")
+                probe.unlink()
+            except OSError:
+                raise ApiError("This folder cannot be used (missing or not writable)")
         con.execute("UPDATE tbl_Settings SET SettingValue=? WHERE SettingKey=?", (v, k))
     audit(con, "UPDATE", "tbl_Settings", "-", ", ".join(data))
     con.commit()
@@ -203,7 +247,9 @@ def lookups(con) -> dict:
         "costcenters": master_list(con, "costcenters"),
         "glaccounts": master_list(con, "glaccounts"),
         "methods": master_list(con, "methods"),
+        "currencies": master_list(con, "currencies"),
         "suppliers": rows(con, "SELECT SupplierID,SupplierCode,SupplierName,SupplierNameAr,IsActive FROM tbl_Suppliers ORDER BY SupplierName", raw=True),
+        "employees": rows(con, "SELECT EmployeeID,EmployeeCode,EmployeeName,EmployeeNameAr,JobTitle,Department,IsActive FROM tbl_Employees ORDER BY EmployeeName", raw=True),
         "supplier_types": SUPPLIER_TYPES,
         "periods": rows(con, "SELECT * FROM tbl_DepreciationPeriods ORDER BY StartDate"),
         "settings": get_settings(con),
@@ -267,6 +313,8 @@ ASSET_FIELDS = ["AssetName", "AssetNameAr", "AssetDescription", "CategoryID", "A
 BOOK_SQL = """
 SELECT A.*, C.CategoryCode, C.CategoryName, C.CategoryNameAr, M.MethodCode, M.MethodName, M.MethodNameAr,
        L.LocationName, L.LocationNameAr, L.LocationCode, CC.CostCenterName, CC.CostCenterNameAr, CC.CostCenterCode, SP.SupplierNameAr,
+       (SELECT E.EmployeeName FROM tbl_AssetCustody U JOIN tbl_Employees E ON E.EmployeeID=U.EmployeeID WHERE U.AssetID=A.AssetID AND U.Status='Issued') AS CustodianName,
+       (SELECT E.EmployeeNameAr FROM tbl_AssetCustody U JOIN tbl_Employees E ON E.EmployeeID=U.EmployeeID WHERE U.AssetID=A.AssetID AND U.Status='Issued') AS CustodianNameAr,
        COALESCE(A.OpeningAccumDep,0) + COALESCE((SELECT SUM(PeriodDepreciation) FROM tbl_Depreciation D
             WHERE D.AssetID=A.AssetID AND D.PostingStatus='POSTED'),0) AS AccumDep
 FROM tbl_Assets A
@@ -320,6 +368,7 @@ def get_asset(con, asset_id: int) -> dict:
         JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID WHERE D.AssetID=? ORDER BY P.StartDate""", (asset_id,))
     a["attachments"] = rows(con, "SELECT * FROM tbl_AssetAttachments WHERE AssetID=? ORDER BY AttachmentID DESC", (asset_id,))
     a["maintenance"] = list_maintenance(con, asset=str(asset_id))
+    a["custody"] = list_custody(con, asset=str(asset_id))
     a["has_posted"] = any(d["PostingStatus"] == "POSTED" for d in a["depreciation"])
     return a
 
@@ -353,7 +402,22 @@ def _clean_asset(con, data: dict, existing: dict | None) -> dict:
     v["DepreciationStartDate"] = parse_date(data.get("DepreciationStartDate"), "Depreciation start date") or v["InServiceDate"]
     if v["InServiceDate"] < v["AcquisitionDate"]:
         raise ApiError("In-service date cannot be before the acquisition date")
-    v["AcquisitionCost"] = num(data.get("AcquisitionCost"), "Acquisition cost", 0, 0)
+    # The books always carry the NET cost (excluding VAT); VAT only records how the asset was bought.
+    st = get_settings(con)
+    amount = num(data.get("PurchaseAmount") if data.get("PurchaseAmount") not in (None, "") else data.get("AcquisitionCost"), "Invoice amount", 0, 0)
+    truthy = (True, 1, "1", "true", "True")
+    applicable = 1 if (st.get("VATEnabled", "1") == "1" and data.get("VatApplicable") in truthy) else 0
+    rate = num(data.get("VatRate"), "VAT rate", float(st.get("VATRate") or 15), 0)
+    if rate > 100:
+        raise ApiError("VAT rate must be between 0 and 100")
+    inclusive = 1 if (applicable and data.get("VatInclusive") in truthy) else 0
+    if applicable:
+        net = round(amount / (1 + rate / 100), 2) if inclusive else round(amount, 2)
+        vat = round(amount - net, 2) if inclusive else round(net * rate / 100, 2)
+    else:
+        net, vat, rate = round(amount, 2), 0.0, None
+    v["VatApplicable"], v["VatInclusive"], v["VatRate"], v["PurchaseAmount"], v["VatAmount"] = applicable, inclusive, rate, round(amount, 2), vat
+    v["AcquisitionCost"] = net
     v["ResidualValue"] = num(data.get("ResidualValue"), "Residual value", 0, 0)
     if v["ResidualValue"] > v["AcquisitionCost"]:
         raise ApiError("Residual value cannot exceed the acquisition cost")
@@ -444,6 +508,8 @@ def delete_asset(con, asset_id: int) -> dict:
     a = get_asset(con, asset_id)
     if one(con, "SELECT 1 x FROM tbl_Maintenance WHERE AssetID=? LIMIT 1", (asset_id,)):
         raise ApiError("This asset has maintenance records and cannot be deleted")
+    if one(con, "SELECT 1 x FROM tbl_AssetCustody WHERE AssetID=? LIMIT 1", (asset_id,)):
+        raise ApiError("This asset has custody records and cannot be deleted")
     if any(t["TransactionType"] not in ("ACQUISITION", "STATUS") for t in a["transactions"]) or a["depreciation"]:
         raise ApiError("This asset has depreciation or other transactions and cannot be deleted")
     for att in a["attachments"]:
@@ -635,6 +701,8 @@ def dispose_asset(con, asset_id: int, data: dict) -> dict:
         raise ApiError("Asset is already disposed")
     if one(con, "SELECT 1 x FROM tbl_Maintenance WHERE AssetID=? AND Status IN ('Planned','In Progress') LIMIT 1", (asset_id,)):
         raise ApiError("Complete or cancel the open maintenance orders of this asset first")
+    if one(con, "SELECT 1 x FROM tbl_AssetCustody WHERE AssetID=? AND Status='Issued' LIMIT 1", (asset_id,)):
+        raise ApiError("Return the asset from the employee custody first")
     d = parse_date(data.get("TransactionDate"), "Disposal date", True)
     if d < a["AcquisitionDate"]:
         raise ApiError("Disposal date cannot be before the acquisition date")
@@ -733,15 +801,21 @@ def add_attachment(con, asset_id: int, filename: str, content: bytes, meta: dict
               / raw_asset["AcquisitionDate"][:7] / clean(raw_asset["AssetCode"]))
     folder.mkdir(parents=True, exist_ok=True)
     base = f"{clean(raw_asset['AssetCode'])}_{raw_asset['AcquisitionDate']}"
+    custody_id = int(meta["custody_id"]) if meta.get("custody_id") else None
+    if custody_id:  # signed handover / return forms: <asset>_<custody no>_<issue date>
+        cu = one(con, "SELECT CustodyNo, IssueDate FROM tbl_AssetCustody WHERE CustodyID=? AND AssetID=?", (custody_id, asset_id), raw=True)
+        if not cu:
+            raise ApiError("Custody record not found", 404)
+        base = f"{clean(raw_asset['AssetCode'])}_{clean(cu['CustodyNo'])}_{cu['IssueDate']}"
     target, n = folder / f"{base}{ext}", 1
     while target.exists():
         n += 1
         target = folder / f"{base}_{n}{ext}"
     safe = target.name
     target.write_bytes(content)
-    con.execute("INSERT INTO tbl_AssetAttachments(AssetID,DocumentTitle,DocumentType,FileName,FileExtension,FilePath,Notes,"
-                "CreatedAt,CreatedBy) VALUES(?,?,?,?,?,?,?,?,?)",
-                (asset_id, meta.get("title") or safe, meta.get("type") or None, target.name,
+    con.execute("INSERT INTO tbl_AssetAttachments(AssetID,CustodyID,DocumentTitle,DocumentType,FileName,FileExtension,FilePath,Notes,"
+                "CreatedAt,CreatedBy) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (asset_id, custody_id, meta.get("title") or safe, meta.get("type") or None, target.name,
                  target.suffix.lstrip(".").lower(), str(target), meta.get("notes") or None, now(), USER))
     audit(con, "ATTACH", "tbl_Assets", asset_id, target.name)
     con.commit()
@@ -817,6 +891,7 @@ def dashboard(con) -> dict:
         "recent": rows(con, """SELECT T.*, A.AssetCode, A.AssetName, A.AssetNameAr FROM tbl_AssetTransactions T JOIN tbl_Assets A ON A.AssetID=T.AssetID
                                ORDER BY T.TransactionID DESC LIMIT 8"""),
         "currency": get_settings(con).get("DefaultCurrency") or "SAR",
+        "custody_held": one(con, "SELECT COUNT(*) n FROM tbl_AssetCustody WHERE Status='Issued'")["n"],
         "maint_open": one(con, "SELECT COUNT(*) n FROM tbl_Maintenance WHERE Status IN ('Planned','In Progress')")["n"],
         "maint_overdue": one(con, "SELECT COUNT(*) n FROM tbl_Maintenance WHERE Status IN ('Planned','In Progress') AND ScheduledDate<?", (today,))["n"],
         "maint_due": [_maint_flags(m) for m in rows(con, MAINT_SQL + " WHERE M.Status IN ('Planned','In Progress') ORDER BY M.ScheduledDate LIMIT 6")],
@@ -1042,6 +1117,10 @@ def get_supplier(con, sid: int) -> dict:
     return sup
 
 
+def next_supplier_code(con) -> str:
+    return _next_supplier_code(con)
+
+
 def _next_supplier_code(con) -> str:
     mx = 0
     for r in con.execute("SELECT SupplierCode FROM tbl_Suppliers"):
@@ -1075,8 +1154,13 @@ def save_supplier(con, data: dict, sid: int | None = None) -> dict:
         if dup:
             raise ApiError(f"This tax number already belongs to supplier {dup['SupplierCode']}")
     active = 0 if data.get("IsActive") in (False, 0, "0", "false") else 1
+    code = (data.get("SupplierCode") or "").strip()
+    if len(code) > 20:
+        raise ApiError("Supplier code is too long")
     if sid is None:
-        code = _next_supplier_code(con)
+        code = code or _next_supplier_code(con)
+        if one(con, "SELECT 1 x FROM tbl_Suppliers WHERE lower(SupplierCode)=lower(?)", (code,), raw=True):
+            raise ApiError(f"Supplier code {code} already exists")
         cur = con.execute(f"INSERT INTO tbl_Suppliers(SupplierCode,{','.join(v)},IsActive,CreatedAt,CreatedBy) VALUES(?,{','.join('?' * len(v))},?,?,?)",
                           [code, *v.values(), active, now(), USER])
         sid = cur.lastrowid
@@ -1085,8 +1169,11 @@ def save_supplier(con, data: dict, sid: int | None = None) -> dict:
         cur_s = one(con, "SELECT SupplierCode, SupplierName FROM tbl_Suppliers WHERE SupplierID=?", (sid,), raw=True)
         if not cur_s:
             raise ApiError("Supplier not found", 404)
-        con.execute(f"UPDATE tbl_Suppliers SET {','.join(k + '=?' for k in v)},IsActive=?,ModifiedAt=?,ModifiedBy=? WHERE SupplierID=?",
-                    [*v.values(), active, now(), USER, sid])
+        code = code or cur_s["SupplierCode"]
+        if one(con, "SELECT 1 x FROM tbl_Suppliers WHERE lower(SupplierCode)=lower(?) AND SupplierID<>?", (code, sid), raw=True):
+            raise ApiError(f"Supplier code {code} already exists")
+        con.execute(f"UPDATE tbl_Suppliers SET SupplierCode=?,{','.join(k + '=?' for k in v)},IsActive=?,ModifiedAt=?,ModifiedBy=? WHERE SupplierID=?",
+                    [code, *v.values(), active, now(), USER, sid])
         if cur_s["SupplierName"] != v["SupplierName"]:  # keep the denormalised names on linked records in step
             con.execute("UPDATE tbl_Assets SET SupplierName=? WHERE SupplierID=?", (v["SupplierName"], sid))
             con.execute("UPDATE tbl_Maintenance SET Vendor=? WHERE SupplierID=?", (v["SupplierName"], sid))
@@ -1106,17 +1193,19 @@ def delete_supplier(con, sid: int) -> dict:
 
 
 # ---------------------------------------------------------------- backup
-BACKUP_RE = re.compile(r"^GooyaAsset_backup_\d{4}-\d{2}-\d{2}_\d{6}\.zip$")
+BACKUP_RE = re.compile(r"^GooyaAsset_(backup|auto)_\d{4}-\d{2}-\d{2}_\d{6}\.zip$")
 
 
 def _backup_root(con) -> Path:
-    folder = get_settings(con).get("BackupFolder")
-    root = Path(folder) if folder else db.ROOT / "backups"
+    folder = (get_settings(con).get("BackupFolder") or "").strip()
+    if not folder:
+        raise ApiError("Choose the backup folder first (Settings > Backup > Location)")
+    root = Path(folder)
     root.mkdir(parents=True, exist_ok=True)
     return root
 
 
-def create_backup(con) -> dict:
+def create_backup(con, auto: bool = False) -> dict:
     """Zip a consistent snapshot of the database together with every attachment file."""
     import json
     import tempfile
@@ -1124,7 +1213,7 @@ def create_backup(con) -> dict:
 
     root = _backup_root(con)
     att_root = _attach_root(con)
-    name = f"GooyaAsset_backup_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.zip"
+    name = f"GooyaAsset_{'auto' if auto else 'backup'}_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.zip"
     target = root / name
     files = 0
     with tempfile.TemporaryDirectory() as tmp:
@@ -1146,19 +1235,23 @@ def create_backup(con) -> dict:
         except Exception:
             target.unlink(missing_ok=True)
             raise
-    audit(con, "BACKUP", "backup", name, f"{files} attachment file(s)")
+    audit(con, "AUTO BACKUP" if auto else "BACKUP", "backup", name, f"{files} attachment file(s)")
     con.commit()
     return {"name": name, "size": target.stat().st_size, "attachments": files, "folder": str(root)}
 
 
 def list_backups(con) -> dict:
+    folder = (get_settings(con).get("BackupFolder") or "").strip()
+    if not folder:
+        return {"folder": "", "custom_folder": "", "items": [], "schedule": backup_schedule(con)}
     root = _backup_root(con)
     items = []
-    for p in sorted(root.glob("GooyaAsset_backup_*.zip"), reverse=True):
+    for p in sorted(root.glob("GooyaAsset_*.zip"), reverse=True):
         if BACKUP_RE.match(p.name):
             st = p.stat()
-            items.append({"name": p.name, "size": st.st_size, "created": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")})
-    return {"folder": str(root), "items": items}
+            items.append({"name": p.name, "size": st.st_size, "kind": "auto" if "_auto_" in p.name else "manual",
+                          "created": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")})
+    return {"folder": str(root), "custom_folder": get_settings(con).get("BackupFolder") or "", "items": items, "schedule": backup_schedule(con)}
 
 
 def backup_path(con, name: str) -> Path:
@@ -1166,3 +1259,285 @@ def backup_path(con, name: str) -> Path:
     if not BACKUP_RE.match(name) or not p.is_file():
         raise ApiError("Backup not found", 404)
     return p
+
+
+# ---------------------------------------------------------------- automatic backup schedule
+def _slots(mode: str, hhmm: str, weekday: int, dom: int, around: datetime) -> list[datetime]:
+    hh, mm = int(hhmm[:2]), int(hhmm[3:5])
+    out: list[datetime] = []
+    if mode == "DAILY" or mode == "WEEKLY":
+        d = around.date().toordinal() - 400
+        for o in range(d, d + 800):
+            day = date.fromordinal(o)
+            if mode == "DAILY" or day.weekday() == weekday:
+                out.append(datetime(day.year, day.month, day.day, hh, mm))
+    elif mode in ("MONTHLY", "QUARTERLY"):
+        for y in (around.year - 1, around.year, around.year + 1):
+            for m in (range(1, 13) if mode == "MONTHLY" else (1, 4, 7, 10)):
+                day = min(dom, calendar.monthrange(y, m)[1])
+                out.append(datetime(y, m, day, hh, mm))
+    return sorted(out)
+
+
+def backup_schedule(con, at: datetime | None = None) -> dict:
+    at = at or datetime.now()
+    st = get_settings(con)
+    mode = st.get("BackupSchedule") or "OFF"
+    info = {"mode": mode, "time": st.get("BackupTime") or "02:00", "weekday": int(st.get("BackupWeekday") or 0),
+            "dom": int(st.get("BackupDayOfMonth") or 1), "keep": int(st.get("BackupKeep") or 0),
+            "last_run": st.get("BackupLastRun") or "", "last_result": st.get("BackupLastResult") or "", "next_run": "", "due_slot": ""}
+    if mode != "OFF":
+        slots = _slots(mode, info["time"], info["weekday"], info["dom"], at)
+        past = [x for x in slots if x <= at]
+        future = [x for x in slots if x > at]
+        info["due_slot"] = past[-1].strftime("%Y-%m-%d %H:%M:%S") if past else ""
+        info["next_run"] = future[0].strftime("%Y-%m-%d %H:%M") if future else ""
+    return info
+
+
+def _put_setting(con, key: str, value: str) -> None:
+    con.execute("UPDATE tbl_Settings SET SettingValue=? WHERE SettingKey=?", (value, key))
+
+
+def run_due_backup(con, at: datetime | None = None) -> dict | None:
+    """Called by the scheduler thread: takes the automatic backup when its slot has passed and it was not taken yet."""
+    at = at or datetime.now()
+    sch = backup_schedule(con, at)
+    if sch["mode"] == "OFF" or not sch["due_slot"] or not (get_settings(con).get("BackupFolder") or "").strip():
+        return None
+    if sch["last_run"] and sch["last_run"] >= sch["due_slot"]:
+        return None
+    last_try = get_settings(con).get("BackupLastAttempt") or ""
+    if last_try and (at - datetime.strptime(last_try, "%Y-%m-%d %H:%M:%S")).total_seconds() < 3600:
+        return None  # retry a failed attempt at most once an hour
+    _put_setting(con, "BackupLastAttempt", at.strftime("%Y-%m-%d %H:%M:%S"))
+    con.commit()
+    try:
+        res = create_backup(con, auto=True)
+        _put_setting(con, "BackupLastRun", now())
+        _put_setting(con, "BackupLastResult", "OK: " + res["name"])
+        if sch["keep"] > 0:
+            root = _backup_root(con)
+            autos = sorted([p for p in root.glob("GooyaAsset_auto_*.zip") if BACKUP_RE.match(p.name)], reverse=True)
+            for old in autos[sch["keep"]:]:
+                old.unlink(missing_ok=True)
+        con.commit()
+        return res
+    except Exception as e:  # noqa: BLE001
+        _put_setting(con, "BackupLastResult", f"Error: {e}")
+        con.commit()
+        return None
+
+
+def open_backup_folder(con) -> dict:
+    """Opens the backup folder in Windows Explorer (the app only ever runs on the user's own PC)."""
+    root = _backup_root(con)
+    if hasattr(os, "startfile"):
+        os.startfile(str(root))  # noqa: S606
+    return {"folder": str(root)}
+
+
+# ---------------------------------------------------------------- employees
+EMPLOYEE_FIELDS = ["EmployeeName", "EmployeeNameAr", "JobTitle", "Department", "Phone", "Mobile", "Email", "NationalID", "HireDate", "Notes"]
+
+EMPLOYEE_LIST_SQL = """SELECT E.*,
+  (SELECT COUNT(*) FROM tbl_AssetCustody C WHERE C.EmployeeID=E.EmployeeID AND C.Status='Issued') AS HeldCount,
+  (SELECT COUNT(*) FROM tbl_AssetCustody C WHERE C.EmployeeID=E.EmployeeID) AS TotalCustody
+  FROM tbl_Employees E"""
+
+
+def list_employees(con, q: str = "", status: str = "") -> list[dict]:
+    sql, args = EMPLOYEE_LIST_SQL + " WHERE 1=1", []
+    if status in ("1", "0"):
+        sql += " AND E.IsActive=?"
+        args.append(int(status))
+    if q:
+        sql += " AND (E.EmployeeCode LIKE ? OR E.EmployeeName LIKE ? OR E.EmployeeNameAr LIKE ? OR E.Department LIKE ? OR E.Mobile LIKE ? OR E.Email LIKE ?)"
+        args += [f"%{q}%"] * 6
+    return rows(con, sql + " ORDER BY E.EmployeeName", args)
+
+
+def get_employee(con, eid: int) -> dict:
+    emp = one(con, EMPLOYEE_LIST_SQL + " WHERE E.EmployeeID=?", (eid,), raw=True)
+    if not emp:
+        raise ApiError("Employee not found", 404)
+    emp["custody"] = list_custody(con, employee=str(eid))
+    return emp
+
+
+def next_employee_code(con) -> str:
+    mx = 0
+    for r in con.execute("SELECT EmployeeCode FROM tbl_Employees"):
+        m = re.fullmatch(r"EMP-(\d+)", r["EmployeeCode"])
+        if m:
+            mx = max(mx, int(m.group(1)))
+    return f"EMP-{mx + 1:04d}"
+
+
+def save_employee(con, data: dict, eid: int | None = None) -> dict:
+    v: dict[str, Any] = {}
+    for f in EMPLOYEE_FIELDS:
+        raw = data.get(f)
+        v[f] = ((raw or "").strip() or None) if isinstance(raw, (str, type(None))) else raw
+    if not v["EmployeeName"]:
+        raise ApiError("Employee name is required")
+    v["HireDate"] = parse_date(v["HireDate"], "Hire date")
+    if v["Email"] and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v["Email"]):
+        raise ApiError("Email address is not valid")
+    for f in ("Phone", "Mobile"):
+        if v[f] and not re.fullmatch(r"[+0-9 ()\-./]{5,25}", v[f]):
+            raise ApiError(f"{f} is not a valid phone number")
+    if v["NationalID"]:
+        dup = one(con, "SELECT EmployeeCode FROM tbl_Employees WHERE NationalID=? AND EmployeeID<>?", (v["NationalID"], eid or 0), raw=True)
+        if dup:
+            raise ApiError(f"This ID number already belongs to employee {dup['EmployeeCode']}")
+    active = 0 if data.get("IsActive") in (False, 0, "0", "false") else 1
+    code = (data.get("EmployeeCode") or "").strip()
+    if len(code) > 20:
+        raise ApiError("Employee code is too long")
+    if eid is None:
+        code = code or next_employee_code(con)
+        if one(con, "SELECT 1 x FROM tbl_Employees WHERE lower(EmployeeCode)=lower(?)", (code,), raw=True):
+            raise ApiError(f"Employee code {code} already exists")
+        cur = con.execute(f"INSERT INTO tbl_Employees(EmployeeCode,{','.join(v)},IsActive,CreatedAt,CreatedBy) VALUES(?,{','.join('?' * len(v))},?,?,?)",
+                          [code, *v.values(), active, now(), USER])
+        eid = cur.lastrowid
+        audit(con, "CREATE", "tbl_Employees", eid, f"{code} {v['EmployeeName']}")
+    else:
+        cur_e = one(con, "SELECT EmployeeCode FROM tbl_Employees WHERE EmployeeID=?", (eid,), raw=True)
+        if not cur_e:
+            raise ApiError("Employee not found", 404)
+        code = code or cur_e["EmployeeCode"]
+        if one(con, "SELECT 1 x FROM tbl_Employees WHERE lower(EmployeeCode)=lower(?) AND EmployeeID<>?", (code, eid), raw=True):
+            raise ApiError(f"Employee code {code} already exists")
+        if not active and one(con, "SELECT 1 x FROM tbl_AssetCustody WHERE EmployeeID=? AND Status='Issued' LIMIT 1", (eid,)):
+            raise ApiError("This employee still holds assets; take them back before deactivating")
+        con.execute(f"UPDATE tbl_Employees SET EmployeeCode=?,{','.join(k + '=?' for k in v)},IsActive=?,ModifiedAt=?,ModifiedBy=? WHERE EmployeeID=?",
+                    [code, *v.values(), active, now(), USER, eid])
+        audit(con, "UPDATE", "tbl_Employees", eid, code)
+    con.commit()
+    return get_employee(con, eid)
+
+
+def delete_employee(con, eid: int) -> dict:
+    emp = get_employee(con, eid)
+    if emp["custody"]:
+        raise ApiError("This employee has custody records and cannot be deleted. Mark the employee inactive instead.")
+    con.execute("DELETE FROM tbl_Employees WHERE EmployeeID=?", (eid,))
+    audit(con, "DELETE", "tbl_Employees", eid, emp["EmployeeCode"])
+    con.commit()
+    return {"deleted": eid}
+
+
+# ---------------------------------------------------------------- asset custody (employee handover)
+# Custody only records who holds an asset; it never touches cost, depreciation or the asset reports.
+CUSTODY_SQL = """SELECT U.*, A.AssetCode, A.AssetName, A.AssetNameAr, A.SerialNumber, A.ModelNumber, A.Manufacturer, A.CategoryID,
+    C.CategoryName, C.CategoryNameAr, E.EmployeeCode, E.EmployeeName, E.EmployeeNameAr, E.JobTitle, E.Department, E.NationalID, E.Mobile,
+    (SELECT COUNT(*) FROM tbl_AssetAttachments T WHERE T.CustodyID=U.CustodyID) AS AttachmentCount
+    FROM tbl_AssetCustody U JOIN tbl_Assets A ON A.AssetID=U.AssetID JOIN tbl_Employees E ON E.EmployeeID=U.EmployeeID
+    LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID"""
+
+
+def list_custody(con, status: str = "", employee: str = "", asset: str = "") -> list[dict]:
+    sql, args = CUSTODY_SQL + " WHERE 1=1", []
+    if status in ("Issued", "Returned"):
+        sql += " AND U.Status=?"
+        args.append(status)
+    if employee:
+        sql += " AND U.EmployeeID=?"
+        args.append(employee)
+    if asset:
+        sql += " AND U.AssetID=?"
+        args.append(asset)
+    return rows(con, sql + " ORDER BY U.IssueDate DESC, U.CustodyID DESC", args)
+
+
+def get_custody(con, cid: int) -> dict:
+    cu = one(con, CUSTODY_SQL + " WHERE U.CustodyID=?", (cid,), raw=True)
+    if not cu:
+        raise ApiError("Custody record not found", 404)
+    cu["attachments"] = rows(con, "SELECT * FROM tbl_AssetAttachments WHERE CustodyID=? ORDER BY AttachmentID DESC", (cid,), raw=True)
+    cu["CompanyName"] = get_settings(con).get("CompanyName", "")
+    return cu
+
+
+def _next_custody_no(con) -> str:
+    mx = 0
+    for r in con.execute("SELECT CustodyNo FROM tbl_AssetCustody"):
+        m = re.fullmatch(r"CU-(\d+)", r["CustodyNo"])
+        if m:
+            mx = max(mx, int(m.group(1)))
+    return f"CU-{mx + 1:04d}"
+
+
+def issue_custody(con, data: dict) -> dict:
+    aid = int(data.get("AssetID") or 0)
+    eid = int(data.get("EmployeeID") or 0)
+    asset = one(con, "SELECT AssetID, AssetCode, AssetStatus, AcquisitionDate FROM tbl_Assets WHERE AssetID=?", (aid,), raw=True)
+    emp = one(con, "SELECT EmployeeID, EmployeeCode, IsActive FROM tbl_Employees WHERE EmployeeID=?", (eid,), raw=True)
+    if not asset:
+        raise ApiError("Asset is required")
+    if not emp:
+        raise ApiError("Employee is required")
+    if asset["AssetStatus"] == "Disposed":
+        raise ApiError("Asset is disposed")
+    if not emp["IsActive"]:
+        raise ApiError("This employee is inactive")
+    held = one(con, "SELECT U.CustodyNo, E.EmployeeName FROM tbl_AssetCustody U JOIN tbl_Employees E ON E.EmployeeID=U.EmployeeID WHERE U.AssetID=? AND U.Status='Issued'", (aid,), raw=True)
+    if held:
+        raise ApiError(f"This asset is already with {held['EmployeeName']} ({held['CustodyNo']}). Return it first.")
+    issue = parse_date(data.get("IssueDate"), "Issue date", True)
+    if issue < asset["AcquisitionDate"]:
+        raise ApiError("Issue date cannot be before the acquisition date")
+    v = {f: ((data.get(f) or "").strip() or None) for f in ("ConditionOnIssue", "Accessories", "Notes", "IssuedBy")}
+    no = _next_custody_no(con)
+    cur = con.execute("INSERT INTO tbl_AssetCustody(CustodyNo,AssetID,EmployeeID,IssueDate,Status,ConditionOnIssue,Accessories,Notes,IssuedBy,CreatedAt,CreatedBy) "
+                      "VALUES(?,?,?,?,'Issued',?,?,?,?,?,?)", (no, aid, eid, issue, v["ConditionOnIssue"], v["Accessories"], v["Notes"], v["IssuedBy"], now(), USER))
+    audit(con, "CUSTODY ISSUE", "tbl_AssetCustody", cur.lastrowid, f"{no}: {asset['AssetCode']} -> {emp['EmployeeCode']}")
+    con.commit()
+    return get_custody(con, cur.lastrowid)
+
+
+def update_custody(con, cid: int, data: dict) -> dict:
+    cu = get_custody(con, cid)
+    if cu["Status"] != "Issued":
+        raise ApiError("A returned custody record cannot be edited")
+    issue = parse_date(data.get("IssueDate"), "Issue date", True)
+    if issue < one(con, "SELECT AcquisitionDate FROM tbl_Assets WHERE AssetID=?", (cu["AssetID"],), raw=True)["AcquisitionDate"]:
+        raise ApiError("Issue date cannot be before the acquisition date")
+    v = {f: ((data.get(f) or "").strip() or None) for f in ("ConditionOnIssue", "Accessories", "Notes", "IssuedBy")}
+    con.execute("UPDATE tbl_AssetCustody SET IssueDate=?,ConditionOnIssue=?,Accessories=?,Notes=?,IssuedBy=?,ModifiedAt=?,ModifiedBy=? WHERE CustodyID=?",
+                (issue, v["ConditionOnIssue"], v["Accessories"], v["Notes"], v["IssuedBy"], now(), USER, cid))
+    audit(con, "CUSTODY UPDATE", "tbl_AssetCustody", cid, cu["CustodyNo"])
+    con.commit()
+    return get_custody(con, cid)
+
+
+def return_custody(con, cid: int, data: dict) -> dict:
+    cu = get_custody(con, cid)
+    if cu["Status"] != "Issued":
+        raise ApiError("This asset was already returned")
+    ret = parse_date(data.get("ReturnDate"), "Return date", True)
+    if ret < cu["IssueDate"]:
+        raise ApiError("Return date cannot be before the issue date")
+    con.execute("UPDATE tbl_AssetCustody SET Status='Returned',ReturnDate=?,ConditionOnReturn=?,ReturnNotes=?,ModifiedAt=?,ModifiedBy=? WHERE CustodyID=?",
+                (ret, (data.get("ConditionOnReturn") or "").strip() or None, (data.get("ReturnNotes") or "").strip() or None, now(), USER, cid))
+    audit(con, "CUSTODY RETURN", "tbl_AssetCustody", cid, cu["CustodyNo"])
+    con.commit()
+    return get_custody(con, cid)
+
+
+def delete_custody(con, cid: int) -> dict:
+    cu = get_custody(con, cid)
+    if cu["Status"] != "Issued" or cu["attachments"]:
+        raise ApiError("Only an issued custody record without signed documents can be deleted")
+    con.execute("DELETE FROM tbl_AssetCustody WHERE CustodyID=?", (cid,))
+    audit(con, "CUSTODY DELETE", "tbl_AssetCustody", cid, cu["CustodyNo"])
+    con.commit()
+    return {"deleted": cid}
+
+
+def add_custody_attachment(con, cid: int, filename: str, content: bytes, meta: dict) -> dict:
+    cu = get_custody(con, cid)
+    add_attachment(con, cu["AssetID"], filename, content, {**meta, "custody_id": cid, "type": meta.get("type") or "Custody form"})
+    return get_custody(con, cid)

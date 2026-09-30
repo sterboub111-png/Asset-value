@@ -70,7 +70,7 @@ export async function depreciationPage(root: HTMLElement, a: Args): Promise<void
         if (await confirmDialog(t("Discard the unposted proposal?"), { danger: true, ok: t("Discard") })) { await api.del(`/api/depreciation/${cur.PeriodID}/drafts`); await refresh(); } }) }],
     [{ label: t("Journal"), icon: "journal", onClick: () => (location.hash = `#/journal?period=${cur.PeriodID}`) },
      { label: t("Refresh"), icon: "refresh", onClick: refresh }],
-  ]);
+  ], [t("Depreciation"), t("View")]);
   const btns = rb.btns;
   const filters = h("div", { class: "filters" }, h("div", { class: "field" }, h("label", null, t("Period")), sel));
   const pg = page({ title: t("Depreciation run"), subtitle: t("Periodic tasks"), ribbon: rb.el }, filters, info, grid.el);
@@ -85,11 +85,27 @@ export async function periodsPage(root: HTMLElement, _a: Args): Promise<void> {
     { key: "StartDate", label: "Start", type: "date" }, { key: "EndDate", label: "End", type: "date" }, { key: "PeriodStatus", label: "Status", type: "status" },
   ];
   const grid = new DataGrid({ columns: cols, rows: [], exportName: "periods", limit: 1000 });
-  const load = async () => { try { invalidateLookups(); grid.setRows(await api.get("/api/periods")); } catch (e) { fail(e); } };
-  const setStatus = (status: "OPEN" | "CLOSED") => guard(async () => {
-    const r = grid.selected(); if (!r) { toast(t("Select a period first.")); return; }
-    await api.post(`/api/periods/${r.PeriodID}/status`, { status }); toast(t("Period {0}", t(status === "OPEN" ? "reopened" : "closed")), "ok"); await load();
-  });
+  let periods: Rec[] = [];
+  const load = async () => { try { invalidateLookups(); periods = await api.get<Rec[]>("/api/periods"); grid.setRows(periods); } catch (e) { fail(e); } };
+  // Close / Reopen open a dialog to choose the period (pre-selected with the highlighted row)
+  const setStatus = (status: "OPEN" | "CLOSED") => () => {
+    const from = status === "CLOSED" ? "OPEN" : "CLOSED";
+    const choices = periods.filter((p) => p.PeriodStatus === from);
+    if (!choices.length) { toast(t(status === "CLOSED" ? "There are no open periods." : "There are no closed periods.")); return; }
+    const sel = grid.selected();
+    const first = choices.find((p) => sel && p.PeriodID === sel.PeriodID) || (status === "CLOSED" ? choices[0] : choices[choices.length - 1]);
+    const form = new Form([{ name: "PeriodID", label: "Period", type: "select", required: true,
+      options: choices.map((p) => ({ value: p.PeriodID, label: `${p.PeriodName}` })) }], { PeriodID: first.PeriodID });
+    dialog(t(status === "CLOSED" ? "Close period" : "Reopen period"), form.el, [
+      { label: t(status === "CLOSED" ? "Close period" : "Reopen period"), primary: true, onClick: async () => {
+          if (!form.validate()) return false;
+          const p = choices.find((x) => String(x.PeriodID) === form.value("PeriodID"))!;
+          await api.post(`/api/periods/${p.PeriodID}/status`, { status });
+          toast(t("{0}: {1}", p.PeriodName, t(status === "OPEN" ? "reopened" : "closed")), "ok"); await load();
+      } },
+      { label: t("Cancel") },
+    ]);
+  };
   const rb = ribbon([
     [{ label: t("Generate fiscal year"), icon: "plus", primary: true, onClick: () => {
         const f = new Form([{ name: "fiscal_year", label: "Fiscal year", type: "number", step: "1", required: true }], { fiscal_year: new Date().getFullYear() });

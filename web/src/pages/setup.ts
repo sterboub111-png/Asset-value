@@ -1,7 +1,7 @@
 import { api, invalidateLookups, lookups } from "../api.js";
 import { t } from "../i18n.js";
 import type { Col, Lookups, Rec } from "../types.js";
-import { DataGrid, FieldDef, Form, nm, clear, confirmDialog, fail, guard, h, icon, opts, page, ribbon, toast } from "../ui.js";
+import { DataGrid, FieldDef, Form, nm, pill, clear, confirmDialog, fail, guard, h, icon, opts, page, ribbon, toast } from "../ui.js";
 
 type Args = { args: string[]; query: URLSearchParams };
 
@@ -10,7 +10,16 @@ interface MasterCfg { title: string; entity: string; pk: string; cols: Col[]; fi
 const gl = (L: Lookups, type?: RegExp) => opts(L.glaccounts.filter((g) => g.IsActive && (!type || type.test(g.AccountType || ""))), "GLAccountID", (g) => `${g.AccountCode} — ${nm(g, "AccountName")}`);
 const active = { name: "IsActive", label: "Active", type: "checkbox" as const };
 
+let defaultCurrency = "";
+
 export const MASTERS: Record<string, MasterCfg> = {
+  currencies: {
+    title: "Currencies", entity: "currencies", pk: "CurrencyID", defaults: { IsActive: true },
+    cols: [{ key: "CurrencyCode", label: "Code" }, { key: "CurrencyName", label: "Name" }, { key: "CurrencyNameAr", label: "Name (Arabic)" }, { key: "Symbol", label: "Symbol" },
+      { key: "IsDefault", label: "Default", render: (r) => (r.CurrencyCode === defaultCurrency ? pill("Default", "ok") : "") }, { key: "IsActive", label: "Active", type: "bool" }],
+    fields: () => [{ name: "CurrencyCode", label: "Code", required: true, maxlength: 3, hint: "3-letter ISO 4217 code, e.g. SAR." }, { name: "CurrencyName", label: "Name", required: true },
+      { name: "CurrencyNameAr", label: "Name (Arabic)" }, { name: "Symbol", label: "Symbol" }, active],
+  },
   categories: {
     title: "Fixed asset groups", entity: "categories", pk: "CategoryID", defaults: { IsActive: true, MethodID: 1 },
     cols: [{ key: "CategoryCode", label: "Group" }, { key: "CategoryName", label: "Name" }, { key: "CategoryNameAr", label: "Name (Arabic)" }, { key: "UsefulLifeYears", label: "Life (years)", type: "int" },
@@ -52,7 +61,8 @@ export const MASTERS: Record<string, MasterCfg> = {
 export async function masterPage(root: HTMLElement, a: Args): Promise<void> {
   const cfg = MASTERS[a.args[0]];
   if (!cfg) { location.hash = "#/"; return; }
-  const L = await lookups(true);
+  let L = await lookups(true);
+  defaultCurrency = L.settings.DefaultCurrency || "";
   const grid = new DataGrid({ columns: cfg.cols, rows: [], exportName: cfg.entity, limit: 1000, onOpen: (r) => edit(r) });
   let panel: HTMLElement | null = null;
   const holder = h("div", { class: "split-side" });
@@ -82,6 +92,11 @@ export async function masterPage(root: HTMLElement, a: Args): Promise<void> {
          if (await confirmDialog(t("Delete this record?"), { danger: true, ok: t("Delete") })) { await api.del(`/api/master/${cfg.entity}/${r[cfg.pk]}`); toast(t("Deleted"), "ok"); await load(); }
        }) }],
     [{ label: t("Refresh"), icon: "refresh", onClick: load }],
+    ...(cfg.entity === "currencies" ? [[{ label: t("Set as default"), icon: "check", onClick: guard(async () => {
+      const r = grid.selected(); if (!r) { toast(t("Select a record first.")); return; }
+      await api.put("/api/settings", { DefaultCurrency: r.CurrencyCode }); L = await lookups(true); defaultCurrency = r.CurrencyCode;
+      toast(t("Default currency is now {0}", r.CurrencyCode), "ok"); await load();
+    }) }]] : []),
   ]);
   clear(root); root.append(page({ title: t(cfg.title), subtitle: t("Settings"), ribbon: rb.el }, h("div", { class: "split" }, h("div", { class: "split-main" }, grid.el), holder)).el);
   root.addEventListener("pagehide", closePanel);
@@ -93,7 +108,7 @@ export async function parametersPage(root: HTMLElement, _a: Args): Promise<void>
   const L = await lookups(true);
   const s = L.settings;
   const form = new Form([
-    { name: "CompanyName", label: "Company name", wide: true }, { name: "DefaultCurrency", label: "Currency" },
+    { name: "CompanyName", label: "Company name", wide: true },
     { name: "FiscalYearStartMonth", label: "Fiscal year start month", type: "select", required: true, options: Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: new Date(2000, i, 1).toLocaleString(t("en-US"), { month: "long" }) })) },
     { name: "DisposalClearingAccountID", label: "Disposal proceeds (clearing) account", type: "select", options: gl(L) },
     { name: "BackupFolder", label: "Backup folder", wide: true, hint: "Leave blank to use the 'backups' folder next to the application. A cloud or network folder is recommended." },
@@ -106,5 +121,25 @@ export async function parametersPage(root: HTMLElement, _a: Args): Promise<void>
   const rb = ribbon([[{ label: t("Save"), icon: "save", primary: true, onClick: save }]]);
   clear(root);
   root.append(page({ title: t("Fixed asset parameters"), subtitle: t("Settings"), ribbon: rb.el },
+    h("div", { class: "fasttab open" }, h("div", { class: "content", style: "display:block" }, form.el))).el);
+}
+
+export async function taxPage(root: HTMLElement, _a: Args): Promise<void> {
+  const L = await lookups(true);
+  const yesNo = [{ value: "1", label: t("Yes") }, { value: "0", label: t("No") }];
+  const form = new Form([
+    { name: "VATEnabled", label: "Track VAT on asset purchases", type: "select", options: yesNo, required: true },
+    { name: "VATRate", label: "Standard VAT rate (%)", type: "number", step: "0.01", required: true },
+    { name: "VATNumber", label: "Company VAT registration number" },
+    { name: "VATDefaultApplicable", label: "New assets are purchased with VAT", type: "select", options: yesNo },
+    { name: "VATDefaultInclusive", label: "Invoice amounts include VAT", type: "select", options: [{ value: "1", label: t("Inclusive of VAT") }, { value: "0", label: t("Exclusive of VAT") }] },
+  ], L.settings);
+  const save = guard(async () => {
+    if (!form.validate()) return;
+    await api.put("/api/settings", form.get()); invalidateLookups(); toast(t("Tax settings saved"), "ok");
+  });
+  const rb = ribbon([[{ label: t("Save"), icon: "save", primary: true, onClick: save }]]);
+  clear(root);
+  root.append(page({ title: t("Tax (VAT)"), subtitle: t("Settings"), ribbon: rb.el },
     h("div", { class: "fasttab open" }, h("div", { class: "content", style: "display:block" }, form.el))).el);
 }

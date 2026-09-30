@@ -8,6 +8,7 @@ from .services import ApiError, get_settings, one, parse_date, r2, rows
 
 REPORTS = [
     dict(id="asset-register", group="Fixed assets", params=["as_of", "category", "location", "costcenter", "status"]),
+    dict(id="vat-purchases", group="Fixed assets", params=["from", "to", "vat"]),
     dict(id="asset-summary", group="Fixed assets", params=["as_of", "group_by"]),
     dict(id="rollforward", group="Fixed assets", params=["from", "to"]),
     dict(id="depreciation-schedule", group="Depreciation", params=["fiscal_year", "category"]),
@@ -17,6 +18,8 @@ REPORTS = [
     dict(id="transactions", group="Transactions", params=["from", "to", "type"]),
     dict(id="fully-depreciated", group="Exceptions", params=["as_of"]),
     dict(id="warranty-expiry", group="Exceptions", params=["days"]),
+    dict(id="custody-by-employee", group="Contacts", params=["from", "to", "employee", "cstatus"]),
+    dict(id="employees-directory", group="Contacts", params=["sactive"]),
     dict(id="suppliers-directory", group="Suppliers", params=["sactive", "stype"]),
     dict(id="supplier-purchases", group="Suppliers", params=["from", "to", "supplier"]),
     dict(id="supplier-summary", group="Suppliers", params=["from", "to"]),
@@ -48,6 +51,7 @@ def asset_state(con, as_of: str) -> list[dict]:
         a["AccumDep"] = r2((a["OpeningAccumDep"] or 0) + (accum.get(a["AssetID"]) or 0))
         a["Cost"] = r2(a["AcquisitionCost"])
         a["NBV"] = r2(a["Cost"] - a["AccumDep"])
+        a["VatStatus"] = "With VAT" if a.get("VatApplicable") else "No VAT"
         out.append(a)
     return out
 
@@ -62,6 +66,7 @@ def asset_register(con, p):
         data = [a for a in data if a["AssetStatus"] == p["status"]]
     return dict(columns=_cols(("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"), ("CategoryName", "Group", "text"),
                               ("LocationName", "Location", "text"), ("AcquisitionDate", "Acquired", "date"),
+                              ("VatStatus", "VAT", "text"),
                               ("Cost", "Cost", "money"), ("AccumDep", "Accum. depreciation", "money"), ("NBV", "Net book value", "money")),
                 rows=data, group_by="CategoryName", totals=["Cost", "AccumDep", "NBV"], subtitle=f"As of {d}")
 
@@ -358,7 +363,67 @@ def supplier_summary(con, p):
                 subtitle=f"{f if f > '1901' else 'Beginning'} to {t if t < '2999' else 'today'}")
 
 
-BUILDERS = {"suppliers-directory": suppliers_directory, "supplier-purchases": supplier_purchases, "supplier-summary": supplier_summary,
+def vat_purchases(con, p):
+    f, t = _mdate(p, "from", "1900-01-01"), _mdate(p, "to", "2999-12-31")
+    sql = """SELECT A.AssetCode, A.AssetName, A.AssetNameAr, A.AcquisitionDate, A.InvoiceNumber, A.SupplierName, SP.SupplierNameAr, A.VatApplicable,
+             A.VatInclusive, A.VatRate, A.PurchaseAmount, A.AcquisitionCost, A.VatAmount FROM tbl_Assets A
+             LEFT JOIN tbl_Suppliers SP ON SP.SupplierID=A.SupplierID WHERE A.AcquisitionDate BETWEEN ? AND ?"""
+    args = [f, t]
+    if p.get("vat") in ("1", "0"):
+        sql += " AND A.VatApplicable=?"
+        args.append(int(p["vat"]))
+    data = rows(con, sql + " ORDER BY A.AcquisitionDate, A.AssetCode", args)
+    for r in data:
+        r["VatStatus"] = "With VAT" if r["VatApplicable"] else "No VAT"
+        r["Basis"] = ("Inclusive" if r["VatInclusive"] else "Exclusive") if r["VatApplicable"] else ""
+        r["Gross"] = r2((r["AcquisitionCost"] or 0) + (r["VatAmount"] or 0))
+    return dict(columns=_cols(("AcquisitionDate", "Date", "date"), ("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"),
+                              ("SupplierName", "Supplier", "text"), ("InvoiceNumber", "Invoice", "text"), ("VatStatus", "VAT", "text"),
+                              ("Basis", "Invoice basis", "text"), ("VatRate", "VAT rate", "pct"), ("AcquisitionCost", "Net cost", "money"),
+                              ("VatAmount", "VAT amount", "money"), ("Gross", "Total with VAT", "money")),
+                rows=data, totals=["AcquisitionCost", "VatAmount", "Gross"],
+                subtitle=f"{f if f > '1901' else 'Beginning'} to {t if t < '2999' else 'today'}")
+
+
+def custody_by_employee(con, p):
+    f, t = _mdate(p, "from", "1900-01-01"), _mdate(p, "to", "2999-12-31")
+    sql = """SELECT U.CustodyNo, U.IssueDate, U.ReturnDate, U.Status, U.ConditionOnIssue, U.ConditionOnReturn, U.AssetID, A.AssetCode, A.AssetName, A.AssetNameAr,
+             A.SerialNumber, C.CategoryName, C.CategoryNameAr, E.EmployeeCode, E.EmployeeName, E.EmployeeNameAr, E.Department
+             FROM tbl_AssetCustody U JOIN tbl_Assets A ON A.AssetID=U.AssetID JOIN tbl_Employees E ON E.EmployeeID=U.EmployeeID
+             LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID WHERE U.IssueDate BETWEEN ? AND ?"""
+    args = [f, t]
+    if p.get("employee"):
+        sql += " AND U.EmployeeID=?"
+        args.append(p["employee"])
+    if p.get("cstatus") in ("Issued", "Returned"):
+        sql += " AND U.Status=?"
+        args.append(p["cstatus"])
+    data = rows(con, sql + " ORDER BY E.EmployeeName, U.IssueDate", args)
+    for r in data:
+        r["Employee"] = f"{r['EmployeeCode']} - {r['EmployeeName']}" + (f" ({r['Department']})" if r["Department"] else "")
+    return dict(columns=_cols(("CustodyNo", "Custody", "text"), ("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"), ("CategoryName", "Group", "text"),
+                              ("SerialNumber", "Serial number", "text"), ("IssueDate", "Issued", "date"), ("ReturnDate", "Returned", "date"),
+                              ("Status", "Status", "text"), ("ConditionOnIssue", "Condition on issue", "text")),
+                rows=data, group_by="Employee", totals=[], subtitle=f"{f if f > '1901' else 'Beginning'} to {t if t < '2999' else 'today'}")
+
+
+def employees_directory(con, p):
+    sql, args = "SELECT * FROM tbl_Employees WHERE 1=1", []
+    if p.get("sactive") in ("1", "0"):
+        sql += " AND IsActive=?"
+        args.append(int(p["sactive"]))
+    data = rows(con, sql + " ORDER BY EmployeeName", args)
+    for r in data:
+        r["Status"] = "Active" if r["IsActive"] else "Inactive"
+        r["Held"] = con.execute("SELECT COUNT(*) FROM tbl_AssetCustody WHERE EmployeeID=? AND Status='Issued'", (r["EmployeeID"],)).fetchone()[0]
+    return dict(columns=_cols(("EmployeeCode", "Code", "text"), ("EmployeeName", "Name", "text"), ("JobTitle", "Job title", "text"), ("Department", "Department", "text"),
+                              ("Mobile", "Mobile", "text"), ("Email", "Email", "text"), ("Held", "Assets held", "int"), ("Status", "Status", "text")),
+                rows=data, totals=["Held"], subtitle=f"{len(data)} employees")
+
+
+BUILDERS = {"custody-by-employee": custody_by_employee, "employees-directory": employees_directory,
+            "vat-purchases": vat_purchases,
+            "suppliers-directory": suppliers_directory, "supplier-purchases": supplier_purchases, "supplier-summary": supplier_summary,
             "maintenance-history": maintenance_history, "maintenance-cost": maintenance_cost, "maintenance-schedule": maintenance_schedule,
             "asset-register": asset_register, "asset-summary": asset_summary, "rollforward": rollforward,
             "depreciation-schedule": depreciation_schedule, "depreciation-journal": depreciation_journal,

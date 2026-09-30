@@ -3,6 +3,7 @@ import { t } from "../i18n.js";
 import { DataGrid, Form, clear, confirmDialog, dialog, fail, fastTab, fmtMoney, guard, h, icon, nm, opts, page, pill, ribbon, toast } from "../ui.js";
 const typeOpts = (L) => L.supplier_types.map((x) => ({ value: x, label: t(x) }));
 const general = (L) => [
+    { name: "SupplierCode", label: "Supplier code", required: true, maxlength: 20 },
     { name: "SupplierName", label: "Supplier name", required: true, maxlength: 160, wide: true },
     { name: "SupplierNameAr", label: "Name (Arabic)", maxlength: 160, wide: true },
     { name: "SupplierType", label: "Type", type: "select", required: true, options: typeOpts(L) },
@@ -21,8 +22,9 @@ const tax = [
 ];
 const notes = [{ name: "Notes", label: "Notes", type: "textarea", wide: true }];
 // ---- quick-add dialog used from the asset / maintenance forms
-export function quickSupplier(L, onSaved) {
-    const form = new Form([...general(L), ...contact, ...address, ...tax, ...notes], { SupplierType: "Supplier", IsActive: true, Country: t("Saudi Arabia") });
+export async function quickSupplier(L, onSaved) {
+    const code = (await api.get("/api/suppliers/next-code")).code;
+    const form = new Form([...general(L), ...contact, ...address, ...tax, ...notes], { SupplierCode: code, SupplierType: "Supplier", IsActive: true, Country: t("Saudi Arabia") });
     dialog(t("New supplier"), form.el, [
         { label: t("Save"), primary: true, onClick: async () => {
                 if (!form.validate())
@@ -77,9 +79,9 @@ export async function suppliersListPage(root, _a) {
                 else
                     toast(t("Select a supplier first.")); } }],
         [{ label: t("Refresh"), icon: "refresh", onClick: load }, { label: t("Reports"), icon: "report", onClick: () => (location.hash = "#/reports/suppliers-directory") }],
-    ]);
+    ], [t("Suppliers"), t("View")]);
     clear(root);
-    root.append(page({ title: t("Suppliers"), subtitle: t("Suppliers"), ribbon: rb.el }, grid.el).el);
+    root.append(page({ title: t("Suppliers"), subtitle: t("Contacts"), ribbon: rb.el }, grid.el).el);
     await load();
 }
 // ================================================================ form
@@ -97,7 +99,7 @@ export async function supplierFormPage(root, a) {
             return;
         }
     }
-    const v = sup ? { ...sup } : { SupplierType: "Supplier", IsActive: true, Country: t("Saudi Arabia") };
+    const v = sup ? { ...sup } : { SupplierCode: (await api.get("/api/suppliers/next-code")).code, SupplierType: "Supplier", IsActive: true, Country: t("Saudi Arabia") };
     const defs = [general(L), contact, address, tax, notes];
     const forms = defs.map((d) => new Form(d, v));
     const collect = () => Object.assign({}, ...forms.map((f) => f.get()));
@@ -150,6 +152,6 @@ export async function supplierFormPage(root, a) {
             ] }).el, { summary: t("{0} orders", sup.maintenance.length) }));
     }
     clear(root);
-    root.append(page({ title: isNew ? t("New supplier") : `${sup.SupplierCode} : ${nm(sup, "SupplierName")}`, subtitle: t("Suppliers"), pills: sup ? [pill(sup.IsActive ? "Active" : "Inactive")] : [], ribbon: rb.el, factbox: fb }, ...tabs).el);
+    root.append(page({ title: isNew ? t("New supplier") : `${sup.SupplierCode} : ${nm(sup, "SupplierName")}`, subtitle: t("Contacts"), pills: sup ? [pill(sup.IsActive ? "Active" : "Inactive")] : [], ribbon: rb.el, factbox: fb }, ...tabs).el);
     void icon;
 }

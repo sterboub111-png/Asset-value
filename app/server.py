@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from . import db, reports, services as s
+from . import db, reports, scheduler, services as s
 
 STATIC = db.ROOT / "web" / "static"
 HOSTS = {"127.0.0.1", "localhost", "[::1]"}
@@ -141,6 +141,9 @@ def _md2(c, i): return s.delete_maintenance(c.con, int(i))
 @route("POST", "/api/maintenance/(\\d+)/(start|complete|cancel)")
 def _ma2(c, i, act): return s.maintenance_action(c.con, int(i), act, c.body)
 
+@route("GET", "/api/suppliers/next-code")
+def _snc(c): return {"code": s.next_supplier_code(c.con)}
+
 @route("GET", "/api/suppliers")
 def _sl(c): return s.list_suppliers(c.con, c.q("q"), c.q("active"), c.q("type"))
 
@@ -159,8 +162,53 @@ def _sd(c, i): return s.delete_supplier(c.con, int(i))
 @route("GET", "/api/backups")
 def _bl(c): return s.list_backups(c.con)
 
+@route("POST", "/api/backups/open-folder")
+def _bo(c): return s.open_backup_folder(c.con)
+
 @route("POST", "/api/backups")
 def _bc(c): return s.create_backup(c.con)
+
+@route("GET", "/api/employees/next-code")
+def _enc(c): return {"code": s.next_employee_code(c.con)}
+
+@route("GET", "/api/employees")
+def _el(c): return s.list_employees(c.con, c.q("q"), c.q("active"))
+
+@route("POST", "/api/employees")
+def _ec(c): return s.save_employee(c.con, c.body)
+
+@route("GET", "/api/employees/(\\d+)")
+def _eg(c, i): return s.get_employee(c.con, int(i))
+
+@route("PUT", "/api/employees/(\\d+)")
+def _eu(c, i): return s.save_employee(c.con, c.body, int(i))
+
+@route("DELETE", "/api/employees/(\\d+)")
+def _ed(c, i): return s.delete_employee(c.con, int(i))
+
+@route("GET", "/api/custody")
+def _cl(c): return s.list_custody(c.con, c.q("status"), c.q("employee"), c.q("asset"))
+
+@route("POST", "/api/custody")
+def _cc(c): return s.issue_custody(c.con, c.body)
+
+@route("GET", "/api/custody/(\\d+)")
+def _cg(c, i): return s.get_custody(c.con, int(i))
+
+@route("PUT", "/api/custody/(\\d+)")
+def _cu(c, i): return s.update_custody(c.con, int(i), c.body)
+
+@route("DELETE", "/api/custody/(\\d+)")
+def _cd(c, i): return s.delete_custody(c.con, int(i))
+
+@route("POST", "/api/custody/(\\d+)/return")
+def _cr(c, i): return s.return_custody(c.con, int(i), c.body)
+
+@route("POST", "/api/custody/(\\d+)/attachments")
+def _ca(c, i):
+    name = unquote(c.headers.get("X-File-Name", "file"))
+    meta = {"title": unquote(c.headers.get("X-Doc-Title", "")), "type": unquote(c.headers.get("X-Doc-Type", "")), "notes": unquote(c.headers.get("X-Doc-Notes", ""))}
+    return s.add_custody_attachment(c.con, int(i), name, c.raw, meta)
 
 @route("GET", "/api/journal")
 def _j(c): return s.journal(c.con, c.q("period"), c.q("type"))
@@ -293,6 +341,7 @@ def serve(port: int = 8742, open_browser: bool = True) -> None:
     if not db.DB_PATH.exists() or not _has_data():
         if db.EXPORT_PATH.exists():
             print("First run: importing data from Access export…", db.migrate_from_access())
+    scheduler.start()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{port}/"
     print(f"Gooya Asset is running at {url}  (Ctrl+C to stop)")

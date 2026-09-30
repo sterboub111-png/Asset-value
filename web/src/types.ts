@@ -10,6 +10,7 @@ export interface Lookups {
   settings: Record<string, string>;
   statuses: string[];
   suppliers: Rec[];
+  employees: Rec[];
   supplier_types: string[];
   maint_types: string[];
   maint_priorities: string[];

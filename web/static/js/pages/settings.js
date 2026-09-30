@@ -1,9 +1,11 @@
 import { t } from "../i18n.js";
 import { clear, h, icon, page } from "../ui.js";
 import { backupPage } from "./backup.js";
-import { masterPage, parametersPage } from "./setup.js";
+import { masterPage, parametersPage, taxPage } from "./setup.js";
 export const SETTINGS_SECTIONS = [
     { id: "parameters", label: "Fixed asset parameters", icon: "setup" },
+    { id: "currencies", label: "Currencies", icon: "list" },
+    { id: "tax", label: "Tax (VAT)", icon: "calc" },
     { id: "categories", label: "Fixed asset groups", icon: "asset" },
     { id: "methods", label: "Depreciation methods", icon: "calc" },
     { id: "locations", label: "Locations", icon: "home" },
@@ -22,6 +24,8 @@ export async function settingsPage(root, a) {
         await parametersPage(content, a);
     else if (id === "backup")
         await backupPage(content);
+    else if (id === "tax")
+        await taxPage(content, a);
     else
         await masterPage(content, { args: [id], query: a.query });
     void page;

@@ -1,5 +1,6 @@
 import { api, lookups } from "../api.js";
 import { addSupplierShortcut, supplierOptions } from "./suppliers.js";
+import { custodyGrid, issueDialog } from "./custody.js";
 import { t } from "../i18n.js";
 import { DataGrid, Form, nm, clear, confirmDialog, dialog, downloadCsv, fail, fastTab, fmtDate, fmtMoney, guard, h, icon, opts, page, pill, ribbon, toast, today, } from "../ui.js";
 // ================================================================ list
@@ -11,6 +12,8 @@ export async function assetsListPage(root, _a) {
         { key: "AssetName", label: "Name", width: 180 },
         { key: "CategoryName", label: "Group" },
         { key: "AssetStatus", label: "Status", type: "status" },
+        { key: "CustodianName", label: "Held by" },
+        { key: "VatApplicable", label: "VAT", render: (r) => (r.VatApplicable ? t("With VAT") : t("No VAT")) },
         { key: "AcquisitionDate", label: "Acquired", type: "date" },
         { key: "LocationName", label: "Location" },
         { key: "CostCenterName", label: "Cost center" },
@@ -39,7 +42,7 @@ export async function assetsListPage(root, _a) {
     const rb = ribbon([[
             { label: t("New"), icon: "plus", primary: true, onClick: () => (location.hash = "#/assets/new") },
             { label: t("Edit"), icon: "edit", onClick: open },
-        ], [{ label: t("Refresh"), icon: "refresh", onClick: load }]]);
+        ], [{ label: t("Refresh"), icon: "refresh", onClick: load }]], [t("Fixed assets"), t("View")]);
     const pg = page({ title: t("All fixed assets"), subtitle: t("Fixed assets"), ribbon: rb.el }, grid.el);
     clear(root);
     root.append(pg.el);
@@ -78,9 +81,40 @@ export async function assetFormPage(root, a) {
             onChange: (val, f) => applyCategory(val, f) },
         { name: "AssetDescription", label: "Description", type: "textarea", wide: true },
     ];
+    const settings = L.settings;
+    const vatOn = settings.VATEnabled !== "0";
+    const yesNo = [{ value: "1", label: t("Yes") }, { value: "0", label: t("No") }];
+    // Books always carry the NET cost; VAT only records whether the asset was bought with VAT.
+    function recalcVat(f) {
+        if (!vatOn)
+            return;
+        const amount = Number(f.value("PurchaseAmount") || 0);
+        const applicable = vatOn && f.value("VatApplicable") === "1";
+        const rate = Number(f.value("VatRate") || 0);
+        const incl = f.value("VatInclusive") === "1";
+        let net = amount, vat = 0;
+        if (applicable) {
+            net = incl ? Math.round((amount / (1 + rate / 100)) * 100) / 100 : amount;
+            vat = incl ? Math.round((amount - net) * 100) / 100 : Math.round(net * rate / 100 * 100) / 100;
+        }
+        f.set("AcquisitionCost", net.toFixed(2));
+        f.set("VatAmount", vat.toFixed(2));
+        for (const n of ["VatInclusive", "VatRate", "VatAmount"])
+            f.wrapOf(n).style.display = applicable ? "" : "none";
+    }
+    function vatFields() {
+        return [
+            { name: "VatApplicable", label: "Purchased with VAT", type: "select", options: yesNo, required: true, readonly: locked, onChange: (_v, f) => recalcVat(f) },
+            { name: "VatInclusive", label: "Invoice amount is", type: "select", options: [{ value: "1", label: t("Inclusive of VAT") }, { value: "0", label: t("Exclusive of VAT") }], readonly: locked, onChange: (_v, f) => recalcVat(f) },
+            { name: "VatRate", label: "VAT rate (%)", type: "number", step: "0.01", readonly: locked, onChange: (_v, f) => recalcVat(f) },
+            { name: "PurchaseAmount", label: "Invoice amount", type: "number", step: "0.01", required: true, readonly: locked, onChange: (_v, f) => recalcVat(f) },
+            { name: "VatAmount", label: "VAT amount (not part of cost)", type: "number", readonly: true },
+            { name: "AcquisitionCost", label: "Net cost (recorded in books)", type: "number", readonly: true, hint: "Cost, depreciation and reports always use the net value, excluding VAT." },
+        ];
+    }
     const cost = [
         { name: "AcquisitionDate", label: "Acquisition date", type: "date", required: true },
-        { name: "AcquisitionCost", label: "Acquisition cost", type: "number", step: "0.01", required: true, readonly: locked },
+        ...(vatOn ? vatFields() : [{ name: "PurchaseAmount", label: "Acquisition cost", type: "number", step: "0.01", required: true, readonly: locked, onChange: (_v, f) => recalcVat(f) }]),
         { name: "ResidualValue", label: "Residual (salvage) value", type: "number", step: "0.01", readonly: locked },
         { name: "InServiceDate", label: "In-service date", type: "date", readonly: locked, onChange: (val, f) => { if (!f.value("DepreciationStartDate") || lastStart === f.value("DepreciationStartDate")) {
                 f.set("DepreciationStartDate", val);
@@ -108,8 +142,10 @@ export async function assetFormPage(root, a) {
     const ident = [{ name: "Manufacturer", label: "Manufacturer" }, { name: "ModelNumber", label: "Model" }, { name: "SerialNumber", label: "Serial number" }];
     const notes = [{ name: "Notes", label: "Notes", type: "textarea", wide: true }];
     let lastStart = v.DepreciationStartDate || v.InServiceDate || "";
-    const init = { ...v, AssetCode: code };
+    const newDefaults = { VatApplicable: settings.VATDefaultApplicable ?? "1", VatInclusive: settings.VATDefaultInclusive ?? "0", VatRate: settings.VATRate ?? "15" };
+    const init = { ...v, AssetCode: code, ...(isNew ? newDefaults : { VatApplicable: v.VatApplicable ? "1" : "0", VatInclusive: v.VatInclusive ? "1" : "0", VatRate: v.VatRate ?? settings.VATRate ?? "15", PurchaseAmount: v.PurchaseAmount ?? v.AcquisitionCost }) };
     const forms = [general, cost, dep, place, purchase, ident, notes].map((defs) => new Form(defs, init));
+    recalcVat(forms[1]);
     addSupplierShortcut(forms[4], "SupplierID");
     const byName = (n) => forms.find((f) => f.defs.some((d) => d.name === n));
     if (disposed)
@@ -182,11 +218,12 @@ export async function assetFormPage(root, a) {
                 }) }],
         [{ label: t("Transfer"), icon: "transfer", disabled: isNew || disposed, onClick: () => transferDialog(asset, L, () => assetFormPage(root, a)) },
             { label: t("Change status"), icon: "edit", disabled: isNew || disposed, onClick: () => statusDialog(asset, L, () => assetFormPage(root, a)) },
+            { label: t("Issue to employee"), icon: "user", disabled: isNew || disposed || !!asset?.custody?.some((c) => c.Status === "Issued"), onClick: () => void issueDialog(L, { AssetID: asset.AssetID }, (c) => (location.hash = `#/custody/${c.CustodyID}`)) },
             { label: t("Dispose"), icon: "dispose", danger: true, disabled: isNew || disposed, onClick: () => disposeDialog(asset, () => assetFormPage(root, a)) }],
         [{ label: t("New maintenance"), icon: "wrench", disabled: isNew || disposed, onClick: () => (location.hash = `#/maintenance/new?asset=${id}`) }],
         [{ label: t("Refresh"), icon: "refresh", disabled: isNew, onClick: () => assetFormPage(root, a) },
             { label: t("Back to list"), icon: "back", onClick: () => (location.hash = "#/assets") }],
-    ]);
+    ], [t("Fixed asset"), t("Manage"), t("Maintenance"), t("View")]);
     // ---- fasttabs
     const tabs = [
         fastTab(t("General"), forms[0].el, { open: true, summary: isNew ? "" : `${asset.CategoryName || ""}` }),
@@ -206,12 +243,13 @@ export async function assetFormPage(root, a) {
     if (!isNew) {
         tabs.push(fastTab(t("Depreciation history"), depHistory(asset), { summary: t("{0} lines", asset.depreciation.length) }));
         tabs.push(fastTab(t("Transactions"), txGrid(asset), { summary: t("{0} lines", asset.transactions.length) }));
+        tabs.push(fastTab(t("Custody"), custodyGrid(asset.custody, { showAsset: false }), { summary: t("{0} lines", asset.custody.length) }));
         tabs.push(fastTab(t("Maintenance"), maintGrid(asset), { summary: t("{0} orders", asset.maintenance.length) }));
         tabs.push(fastTab(t("Attachments"), attachmentsPanel(asset, () => assetFormPage(root, a)), { summary: t("{0} files", asset.attachments.length) }));
     }
     // ---- factbox
     const kv = (k, val, cls = "") => h("div", { class: cls }, h("span", { class: "k" }, t(k)), h("span", { class: "v" }, val));
-    const fb = h("div", null, h("div", { class: "fb" }, h("h4", null, t("Book value")), h("div", { class: "kv" }, kv("Acquisition cost", money2(asset?.AcquisitionCost ?? 0)), kv("Accumulated depreciation", money2(asset?.AccumDep ?? 0)), h("hr"), kv("Net book value", money2(asset?.NBV ?? 0), "big"))), h("div", { class: "fb" }, h("h4", null, t("Status")), h("div", { class: "kv" }, kv("Status", asset ? pill(asset.AssetStatus) : pill("Draft")), kv("In service", fmtDate(asset?.InServiceDate) || "—"), kv("Attachments", asset ? asset.attachments.length : 0), kv("Last depreciation", lastPosted(asset) || "—"))));
+    const fb = h("div", null, h("div", { class: "fb" }, h("h4", null, t("Book value")), h("div", { class: "kv" }, kv("Acquisition cost", money2(asset?.AcquisitionCost ?? 0)), vatOn ? kv("VAT (not in cost)", asset?.VatApplicable ? money2(asset.VatAmount) : t("No VAT")) : null, kv("Accumulated depreciation", money2(asset?.AccumDep ?? 0)), h("hr"), kv("Net book value", money2(asset?.NBV ?? 0), "big"))), h("div", { class: "fb" }, h("h4", null, t("Status")), h("div", { class: "kv" }, kv("Status", asset ? pill(asset.AssetStatus) : pill("Draft")), kv("In service", fmtDate(asset?.InServiceDate) || "—"), kv("Held by", asset?.CustodianName || "—"), kv("Attachments", asset ? asset.attachments.length : 0), kv("Last depreciation", lastPosted(asset) || "—"))));
     const pg = page({ title: isNew ? t("New fixed asset") : `${asset.AssetCode} : ${nm(asset, "AssetName")}`, subtitle: t("Fixed assets"),
         pills: asset ? [pill(asset.AssetStatus)] : [], ribbon: rb.el, factbox: fb }, ...tabs);
     clear(root);

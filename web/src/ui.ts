@@ -44,6 +44,7 @@ const ICONS: Record<string, string> = {
   wrench: '<path d="M10.5 2.5a3.3 3.3 0 0 0-3.1 4.4L2.5 11.8a1.4 1.4 0 0 0 2 2l4.9-4.9a3.3 3.3 0 0 0 4.4-3.1l-2 1.6-1.8-.4-.4-1.8z"/>',
   truck: '<path d="M1.5 4h8v7h-8zM9.5 6.5h3l2 2V11h-5zM4.5 13a1.3 1.3 0 1 0 0-.01zM11.5 13a1.3 1.3 0 1 0 0-.01z"/>',
   db: '<ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>',
+  user: '<circle cx="8" cy="5.2" r="2.6"/><path d="M2.8 14c.4-3 2.5-4.6 5.2-4.6s4.8 1.6 5.2 4.6"/>',
   globe: '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>', back: '<path d="M9.5 3 4.5 8l5 5M4.5 8h9"/>',
   lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>', unlock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 4.8-1"/>',
   play: '<path d="M4.5 2.5v11l9-5.5z"/>', filter: '<path d="M2 3h12l-4.5 5.5V13l-3-1.5V8.5z"/>', audit: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14M5 7l1.5 1.5L9 5.5"/>',
@@ -65,7 +66,7 @@ export const fmtPct = (v: any) => (v === null || v === undefined || v === "" ? "
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 const STATUS_CLASS: Record<string, string> = {
-  Active: "ok", POSTED: "ok", OPEN: "ok", Posted: "ok", Draft: "info", DRAFT: "info", Planned: "info", "In Progress": "warn", Completed: "ok", Cancelled: "", High: "err", Medium: "warn", Low: "", Overdue: "err", NEW: "info", Inactive: "", "Under Repair": "warn",
+  Active: "ok", POSTED: "ok", OPEN: "ok", Posted: "ok", Draft: "info", DRAFT: "info", Issued: "warn", Returned: "", Attached: "ok", Missing: "warn", Planned: "info", "In Progress": "warn", Completed: "ok", Cancelled: "", High: "err", Medium: "warn", Low: "", Overdue: "err", NEW: "info", Inactive: "", "Under Repair": "warn",
   Disposed: "err", CLOSED: "warn", ACQUISITION: "ok", DISPOSAL: "err", TRANSFER: "info", STATUS: "warn",
 };
 export const pill = (text: string, cls?: string) => h("span", { class: `pill ${cls ?? STATUS_CLASS[text] ?? ""}` }, t(text));
@@ -92,11 +93,11 @@ export function toast(message: string, kind: "ok" | "err" | "" = ""): void {
 export const fail = (e: unknown) => toast(e instanceof Error ? t(e.message) : String(e), "err");
 
 export interface DlgButton { label: string; primary?: boolean; danger?: boolean; onClick?: () => Promise<boolean | void> | boolean | void; }
-export function dialog(title: string, content: Node, buttons: DlgButton[], opts: { wide?: boolean } = {}) {
+export function dialog(title: string, content: Node, buttons: DlgButton[], opts: { wide?: boolean; onClose?: () => void } = {}) {
   const err = h("div", { class: "msgbar err", style: "display:none" });
   const box = h("div", { class: `dlg ${opts.wide ? "wide" : ""}`, role: "dialog", "aria-modal": "true", "aria-label": title });
   const overlay = h("div", { class: "overlay" }, box);
-  const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+  const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); opts.onClose?.(); };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") close();
     else if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT" && (e.target as HTMLInputElement).type !== "file" && box.contains(e.target as Node)) { e.preventDefault(); (foot.querySelector(".btn.primary, .btn.danger") as HTMLButtonElement | null)?.click(); }
@@ -129,17 +130,17 @@ export function confirmDialog(message: string, opts: { danger?: boolean; ok?: st
   return new Promise((resolve) => {
     let done = false;
     const finish = (v: boolean) => { if (!done) { done = true; resolve(v); } };
-    const d = dialog(opts.title || t("Confirm"), h("p", { style: "margin:0" }, message), [
+    // finish(true) runs before the dialog closes; any other way of closing (Cancel, X, Esc, click outside) answers "no"
+    dialog(opts.title || t("Confirm"), h("p", { style: "margin:0" }, message), [
       { label: opts.ok || t("Yes"), primary: !opts.danger, danger: opts.danger, onClick: () => { finish(true); } },
-      { label: t("Cancel"), onClick: () => { finish(false); } },
-    ]);
-    d.el.parentElement!.addEventListener("mousedown", () => setTimeout(() => finish(false), 0));
+      { label: t("Cancel") },
+    ], { onClose: () => finish(false) });
   });
 }
 
 // ---------------------------------------------------------------- forms
 export interface FieldDef {
-  name: string; label: string; type?: "text" | "number" | "date" | "select" | "textarea" | "checkbox";
+  name: string; label: string; type?: "text" | "number" | "date" | "time" | "select" | "textarea" | "checkbox";
   options?: { value: any; label: string }[]; required?: boolean; readonly?: boolean; wide?: boolean; hint?: string;
   step?: string; onChange?: (v: string, form: Form) => void; maxlength?: number;
 }
@@ -160,7 +161,7 @@ export class Form {
     } else if (d.type === "textarea") {
       input = h("textarea", { id, rows: 3 });
     } else {
-      input = h("input", { id, type: d.type === "number" ? "number" : d.type === "date" ? "date" : d.type === "checkbox" ? "checkbox" : "text",
+      input = h("input", { id, type: d.type === "number" ? "number" : d.type === "date" ? "date" : d.type === "time" ? "time" : d.type === "checkbox" ? "checkbox" : "text",
         step: d.type === "number" ? d.step || "any" : undefined, maxlength: d.maxlength });
     }
     if (d.readonly) { input.setAttribute(d.type === "select" || d.type === "checkbox" ? "disabled" : "readonly", ""); }
@@ -230,21 +231,35 @@ export function fastTab(title: string, content: Node, opts: { open?: boolean; su
 }
 
 // ---------------------------------------------------------------- page chrome
-export interface RibbonBtn { id?: string; label: string; icon: string; onClick: () => void; primary?: boolean; danger?: boolean; disabled?: boolean; }
-export function ribbon(groups: RibbonBtn[][]) {
-  const el = h("div", { class: "ribbon", role: "toolbar" });
+export interface RibbonBtn { id?: string; label: string; icon: string; onClick: () => void; primary?: boolean; danger?: boolean; disabled?: boolean; active?: boolean; }
+/** Dynamics-style action pane. With `titles` the button groups become tabs (Asset | Manage | View ...). */
+export function ribbon(groups: RibbonBtn[][], titles?: string[]) {
+  const tabbed = !!titles && titles.length === groups.length && groups.length > 1;
+  const el = h("div", { class: `ribbon ${tabbed ? "tabbed" : ""}`, role: "toolbar" });
   const btns: Record<string, HTMLButtonElement> = {};
-  for (const g of groups) {
+  const strip = tabbed ? h("div", { class: "ribbon-tabs", role: "tablist" }) : null;
+  const panes: HTMLElement[] = [];
+  groups.forEach((g, gi) => {
     const ge = h("div", { class: "grp" });
     for (const b of g) {
-      const be = h("button", { class: `rb ${b.primary ? "primary" : ""} ${b.danger ? "danger" : ""}`, type: "button", disabled: b.disabled },
+      const be = h("button", { class: `rb ${b.primary ? "primary" : ""} ${b.danger ? "danger" : ""} ${b.active ? "active" : ""}`, type: "button", disabled: b.disabled },
         icon(b.icon), h("span", null, b.label));
       be.addEventListener("click", b.onClick);
       if (b.id) btns[b.id] = be;
       ge.appendChild(be);
     }
-    el.appendChild(ge);
-  }
+    panes.push(ge);
+  });
+  if (tabbed && strip) {
+    const show = (i: number) => {
+      panes.forEach((p, k) => { p.style.display = k === i ? "flex" : "none"; });
+      [...strip.children].forEach((c, k) => { c.classList.toggle("active", k === i); c.setAttribute("aria-selected", String(k === i)); });
+    };
+    titles!.forEach((title, i) => strip.appendChild(h("button", { class: "ribbon-tab", type: "button", role: "tab", onclick: () => show(i) }, title)));
+    const wrap = h("div", { class: "ribbon-wrap" }, strip, h("div", { class: "ribbon-row" }, ...panes));
+    show(0);
+    el.appendChild(wrap);
+  } else panes.forEach((p) => el.appendChild(p));
   return { el, btns };
 }
 
@@ -319,7 +334,8 @@ export class DataGrid {
   private render() {
     const cols = this.cols();
     clear(this.thead);
-    this.thead.append(h("tr", null, ...cols.map((c) => {
+    const selectable = !!this.o.onOpen;
+    this.thead.append(h("tr", null, selectable ? h("th", { class: "chk", scope: "col" }) : null, ...cols.map((c) => {
       const th = h("th", { class: ["money", "int", "pct"].includes(c.type || "") ? "num" : "", style: c.width ? `min-width:${c.width}px` : undefined, scope: "col" },
         t(c.label), this.sortKey === c.key ? h("span", { class: "srt" }, this.sortDir > 0 ? "▲" : "▼") : null);
       th.addEventListener("click", () => { if (this.sortKey === c.key) this.sortDir *= -1; else { this.sortKey = c.key; this.sortDir = 1; } this.render(); });
@@ -331,12 +347,12 @@ export class DataGrid {
     if (this.shown > view.length || this.term || this.sortKey) this.shown = Math.min(view.length, Math.max(limit, this.shown));
     clear(this.tbody);
     if (!view.length) {
-      this.tbody.append(h("tr", null, h("td", { colspan: cols.length, class: "empty" }, t(this.o.empty || "No records to show."))));
+      this.tbody.append(h("tr", null, h("td", { colspan: cols.length + (this.o.onOpen ? 1 : 0), class: "empty" }, t(this.o.empty || "No records to show."))));
     }
     for (const r of view.slice(0, this.shown)) this.tbody.append(this.row(r, cols));
     clear(this.tfoot);
     if (this.o.totals && view.length) {
-      this.tfoot.append(h("tr", null, ...cols.map((c, i) => h("td", { class: ["money", "int", "pct"].includes(c.type || "") ? "num" : "" },
+      this.tfoot.append(h("tr", null, this.o.onOpen ? h("td", { class: "chk" }) : null, ...cols.map((c, i) => h("td", { class: ["money", "int", "pct"].includes(c.type || "") ? "num" : "" },
         this.o.totals!.includes(c.key) ? cellValue(c, view.reduce((s, r) => s + Number(r[c.key] || 0), 0)) : i === 0 ? t("Total") : ""))));
     }
     clear(this.foot);
@@ -347,6 +363,12 @@ export class DataGrid {
   }
   private row(r: Rec, cols: Col[]): HTMLElement {
     const tr = h("tr", { class: `${this.o.onOpen ? "clickable" : ""} ${this.sel === r ? "sel" : ""}` });
+    if (this.o.onOpen) {
+      const box = h("input", { type: "checkbox", "aria-label": t("Select row") }) as HTMLInputElement;
+      box.checked = this.sel === r;
+      box.addEventListener("click", (e) => { e.stopPropagation(); if (this.sel === r) { this.sel = null; this.o.onSelect?.(null); tr.classList.remove("sel"); box.checked = false; } else { tr.click(); } });
+      tr.append(h("td", { class: "chk" }, box));
+    }
     tr.append(...cols.map((c, i) => {
       const v = r[c.key];
       let content: any;
@@ -363,7 +385,8 @@ export class DataGrid {
     }));
     tr.addEventListener("click", () => {
       this.sel = r; this.o.onSelect?.(r);
-      this.tbody.querySelectorAll("tr.sel").forEach((x) => x.classList.remove("sel")); tr.classList.add("sel");
+      this.tbody.querySelectorAll("tr.sel").forEach((x) => { x.classList.remove("sel"); (x.querySelector("input[type=checkbox]") as HTMLInputElement | null)?.removeAttribute("checked"); ((x.querySelector("input[type=checkbox]") as HTMLInputElement | null) || ({} as HTMLInputElement)).checked = false; });
+      tr.classList.add("sel"); const cb = tr.querySelector("input[type=checkbox]") as HTMLInputElement | null; if (cb) cb.checked = true;
     });
     if (this.o.onOpen) tr.addEventListener("dblclick", () => this.o.onOpen!(r));
     return tr;
