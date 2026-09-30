@@ -1,4 +1,4 @@
-"""Start Gooya Asset:  python run.py [--no-browser] [--port 8742]"""
+"""Start Usool:  python run.py [--no-browser] [--port 8742]"""
 import sys
 from app.server import serve
 

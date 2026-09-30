@@ -1,4 +1,4 @@
-"""Gooya Asset - SQLite storage layer (schema, connection, Access migration)."""
+"""Usool - SQLite storage layer (schema, connection, Access migration)."""
 from __future__ import annotations
 
 import json
@@ -97,6 +97,21 @@ CREATE TABLE IF NOT EXISTS tbl_Settings(
   SettingID INTEGER PRIMARY KEY AUTOINCREMENT,
   SettingKey TEXT NOT NULL UNIQUE, SettingValue TEXT, SettingDescription TEXT,
   IsActive INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS tbl_Roles(
+  RoleID INTEGER PRIMARY KEY AUTOINCREMENT,
+  RoleName TEXT NOT NULL UNIQUE, RoleNameAr TEXT, Description TEXT, IsSystem INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS tbl_RolePermissions(
+  RoleID INTEGER NOT NULL REFERENCES tbl_Roles(RoleID), Permission TEXT NOT NULL, PRIMARY KEY(RoleID, Permission));
+CREATE TABLE IF NOT EXISTS tbl_Users(
+  UserID INTEGER PRIMARY KEY AUTOINCREMENT,
+  UserName TEXT NOT NULL UNIQUE COLLATE NOCASE, FullName TEXT NOT NULL, FullNameAr TEXT, Email TEXT, Phone TEXT,
+  PasswordHash TEXT NOT NULL, RoleID INTEGER NOT NULL REFERENCES tbl_Roles(RoleID),
+  IsActive INTEGER NOT NULL DEFAULT 1, MustChangePassword INTEGER NOT NULL DEFAULT 0, Language TEXT, Theme TEXT,
+  LastLogin TEXT, FailedAttempts INTEGER NOT NULL DEFAULT 0, LockedUntil TEXT, CreatedAt TEXT, CreatedBy TEXT);
+CREATE TABLE IF NOT EXISTS tbl_Sessions(
+  TokenHash TEXT PRIMARY KEY, UserID INTEGER NOT NULL REFERENCES tbl_Users(UserID),
+  CreatedAt TEXT NOT NULL, LastSeen TEXT NOT NULL, ExpiresAt TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_sessions_user ON tbl_Sessions(UserID);
 CREATE TABLE IF NOT EXISTS tbl_Currencies(
   CurrencyID INTEGER PRIMARY KEY AUTOINCREMENT,
   CurrencyCode TEXT NOT NULL UNIQUE, CurrencyName TEXT NOT NULL, CurrencyNameAr TEXT, Symbol TEXT,
@@ -243,6 +258,8 @@ def init_db() -> None:
     for t, pk in (("tbl_Settings", "SettingID"), ("tbl_Currencies", "CurrencyID")):  # one-off tidy of counters that already ran ahead
         con.execute("UPDATE sqlite_sequence SET seq=(SELECT COALESCE(MAX(%s),0) FROM %s) WHERE name=?" % (pk, t), (t,))
     con.commit()
+    from . import auth  # default roles (imported here to avoid a circular import at load time)
+    auth.seed(con)
     con.close()
 
 
@@ -310,7 +327,7 @@ def migrate_from_access(export: Path = EXPORT_PATH) -> dict:
             (a["AssetID"], "ACQUISITION", a["AcquisitionDate"], a["AcquisitionCost"], a["InvoiceNumber"],
              "Migrated from Gooya asset.accdb", a["LocationID"], a["CostCenterID"]))
     # Disposal clearing account (new)
-    cur = con.execute("INSERT OR IGNORE INTO tbl_GLAccounts(AccountCode,AccountName,AccountType) "
+    con.execute("INSERT OR IGNORE INTO tbl_GLAccounts(AccountCode,AccountName,AccountType) "
                       "VALUES('199901','Fixed Asset Disposal Clearing','CLEARING')")
     gid = con.execute("SELECT GLAccountID FROM tbl_GLAccounts WHERE AccountCode='199901'").fetchone()[0]
     con.execute("UPDATE tbl_Settings SET SettingValue=? WHERE SettingKey='DisposalClearingAccountID'", (str(gid),))

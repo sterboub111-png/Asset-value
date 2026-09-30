@@ -1,10 +1,10 @@
-"""Gooya Asset - report builders. Every report returns
+"""Usool - report builders. Every report returns
 {title, params, columns:[{key,label,type}], rows:[...], group_by?, totals:[keys]}."""
 from __future__ import annotations
 
 from datetime import date
 
-from .services import ApiError, get_settings, one, parse_date, r2, rows
+from .services import ApiError, to_int, get_settings, one, parse_date, r2, rows
 
 REPORTS = [
     dict(id="asset-register", group="Fixed assets", params=["as_of", "category", "location", "costcenter", "status"]),
@@ -13,7 +13,7 @@ REPORTS = [
     dict(id="rollforward", group="Fixed assets", params=["from", "to"]),
     dict(id="depreciation-schedule", group="Depreciation", params=["fiscal_year", "category"]),
     dict(id="depreciation-journal", group="Depreciation", params=["from", "to"]),
-    dict(id="gl-balances", group="Depreciation", params=["as_of"]),
+    dict(id="gl-balances", group="Depreciation", params=["as_of", "account"]),
     dict(id="disposals", group="Transactions", params=["from", "to"]),
     dict(id="transactions", group="Transactions", params=["from", "to", "type"]),
     dict(id="fully-depreciated", group="Exceptions", params=["as_of"]),
@@ -112,6 +112,14 @@ def rollforward(con, p):
                           JOIN tbl_AssetTransactions T ON T.TransactionID=J.TransactionID
                           WHERE T.AssetID=? AND T.TransactionType='DISPOSAL' AND G.AccountType LIKE 'ACCUM%'""", (aid,))["s"]
         g["DepDisposed"] += acc or 0
+    # acquired and disposed within the window: they are in neither the opening nor the closing state but moved in between
+    for a in rows(con, "SELECT * FROM tbl_Assets WHERE AcquisitionDate>? AND AcquisitionDate<=? AND DisposalDate IS NOT NULL AND DisposalDate<=?", (prev, t, t)):
+        g = agg[a["CategoryID"]]
+        g["Additions"] += a["AcquisitionCost"]; g["BroughtIn"] += a["OpeningAccumDep"] or 0; g["Disposals"] += a["AcquisitionCost"]
+        acc = one(con, """SELECT SUM(J.DebitAmount) s FROM tbl_DepreciationJournal J JOIN tbl_GLAccounts G ON G.GLAccountID=J.GLAccountID
+                          JOIN tbl_AssetTransactions T ON T.TransactionID=J.TransactionID
+                          WHERE T.AssetID=? AND T.TransactionType='DISPOSAL' AND G.AccountType LIKE 'ACCUM%'""", (a["AssetID"],))["s"]
+        g["DepDisposed"] += acc or 0
     data = []
     for g in agg.values():
         g["CloseCost"] = g["OpenCost"] + g["Additions"] - g["Disposals"]
@@ -129,7 +137,9 @@ def rollforward(con, p):
 
 
 def depreciation_schedule(con, p):
-    fy = int(p.get("fiscal_year") or date.today().year)
+    fy = to_int(p.get("fiscal_year"), "Fiscal year", date.today().year)
+    if not 1990 <= fy <= 2100:
+        raise ApiError("Fiscal year is not valid")
     sql = """SELECT A.AssetCode, A.AssetName, A.AssetNameAr, C.CategoryName, C.CategoryNameAr, P.PeriodName, P.PeriodNumber, P.PeriodStatus, D.AcquisitionCost,
              D.OpeningAccumDep, D.PeriodDepreciation, D.ClosingAccumDep, D.ClosingNBV, D.PostingStatus
              FROM tbl_Depreciation D JOIN tbl_Assets A ON A.AssetID=D.AssetID JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID
@@ -160,9 +170,10 @@ def depreciation_journal(con, p):
 
 def gl_balances(con, p):
     d = _as_of(p)
+    acc = to_int(p.get("account"), "Account")
     data = rows(con, """SELECT G.AccountCode, G.AccountName, G.AccountNameAr, G.AccountType, SUM(J.DebitAmount) Debit, SUM(J.CreditAmount) Credit,
             SUM(J.DebitAmount)-SUM(J.CreditAmount) Balance FROM tbl_DepreciationJournal J JOIN tbl_GLAccounts G ON G.GLAccountID=J.GLAccountID
-            WHERE J.JournalDate<=? GROUP BY G.GLAccountID ORDER BY G.AccountCode""", (d,))
+            WHERE J.JournalDate<=? AND (?=0 OR G.GLAccountID=?) GROUP BY G.GLAccountID ORDER BY G.AccountCode""", (d, acc, acc))
     for r in data:
         for k in ("Debit", "Credit", "Balance"):
             r[k] = r2(r[k])
@@ -220,7 +231,9 @@ def fully_depreciated(con, p):
 
 
 def warranty_expiry(con, p):
-    days = int(p.get("days") or 90)
+    days = to_int(p.get("days"), "Days", 90)
+    if not 0 <= days <= 36500:
+        raise ApiError("Days must be between 0 and 36500")
     data = rows(con, """SELECT A.AssetCode, A.AssetName, A.AssetNameAr, C.CategoryName, C.CategoryNameAr, A.SupplierName, A.WarrantyExpiryDate,
             CAST(julianday(A.WarrantyExpiryDate)-julianday('now') AS INTEGER) DaysLeft FROM tbl_Assets A
             LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID WHERE A.AssetStatus<>'Disposed' AND A.WarrantyExpiryDate IS NOT NULL
@@ -260,7 +273,7 @@ def maintenance_history(con, p):
 def maintenance_cost(con, p):
     f, t = _mdate(p, "from", "1900-01-01"), _mdate(p, "to", "2999-12-31")
     gb = p.get("mgroup") or "asset"
-    data = rows(con, f"""SELECT M.MaintenanceID, M.MaintenanceType, M.Cost, A.AssetCode, A.AssetName, A.AssetNameAr, C.CategoryName, C.CategoryNameAr
+    data = rows(con, """SELECT M.MaintenanceID, M.MaintenanceType, M.Cost, A.AssetCode, A.AssetName, A.AssetNameAr, C.CategoryName, C.CategoryNameAr
             FROM tbl_Maintenance M JOIN tbl_Assets A ON A.AssetID=M.AssetID LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID
             WHERE M.Status='Completed' AND M.CompletionDate BETWEEN ? AND ?""", (f, t))
     agg: dict[str, dict] = {}
@@ -278,7 +291,9 @@ def maintenance_cost(con, p):
 
 
 def maintenance_schedule(con, p):
-    days = int(p.get("days") or 30)
+    days = to_int(p.get("days"), "Days", 30)
+    if not 0 <= days <= 36500:
+        raise ApiError("Days must be between 0 and 36500")
     today = date.today().isoformat()
     limit = date.fromordinal(date.today().toordinal() + days).isoformat()
     out = []
@@ -309,7 +324,7 @@ def suppliers_directory(con, p):
     sql, args = "SELECT * FROM tbl_Suppliers WHERE 1=1", []
     if p.get("sactive") in ("1", "0"):
         sql += " AND IsActive=?"
-        args.append(int(p["sactive"]))
+        args.append(to_int(p["sactive"], "Status"))
     if p.get("stype"):
         sql += " AND SupplierType=?"
         args.append(p["stype"])
@@ -371,7 +386,7 @@ def vat_purchases(con, p):
     args = [f, t]
     if p.get("vat") in ("1", "0"):
         sql += " AND A.VatApplicable=?"
-        args.append(int(p["vat"]))
+        args.append(to_int(p["vat"], "VAT status"))
     data = rows(con, sql + " ORDER BY A.AcquisitionDate, A.AssetCode", args)
     for r in data:
         r["VatStatus"] = "With VAT" if r["VatApplicable"] else "No VAT"
@@ -411,7 +426,7 @@ def employees_directory(con, p):
     sql, args = "SELECT * FROM tbl_Employees WHERE 1=1", []
     if p.get("sactive") in ("1", "0"):
         sql += " AND IsActive=?"
-        args.append(int(p["sactive"]))
+        args.append(to_int(p["sactive"], "Status"))
     data = rows(con, sql + " ORDER BY EmployeeName", args)
     for r in data:
         r["Status"] = "Active" if r["IsActive"] else "Inactive"
