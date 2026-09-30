@@ -23,12 +23,25 @@ export const REPORT_INFO = {
     "warranty-expiry": { title: "Warranty expiry", desc: "Assets whose warranty has expired or is about to." },
 };
 const yearStart = () => `${new Date().getFullYear()}-01-01`;
-export async function reportsHubPage(root, _a) {
+export const groupSlug = (g) => g.toLowerCase().replace(/\s+/g, "-");
+/** "Reports" without a group: go to the first group (there is no all-reports hub). */
+export async function reportsIndexPage(_root, _a) {
     const list = await api.get("/api/reports");
-    const groups = [...new Set(list.map((r) => r.group))];
-    const body = groups.map((g) => h("div", null, h("h2", { class: "sec" }, t(g)), h("div", { class: "hub" }, ...list.filter((r) => r.group === g).map((r) => h("a", { href: `#/reports/${r.id}` }, h("b", null, t(REPORT_INFO[r.id]?.title || r.id)), h("span", null, t(REPORT_INFO[r.id]?.desc || "")))))));
+    location.hash = list.length ? `#/reports/g/${groupSlug(list[0].group)}` : "#/";
+}
+/** A report group (Depreciation, Maintenance ...): its reports sit in the action pane and are listed below. */
+export async function reportsGroupPage(root, a) {
+    const list = await api.get("/api/reports");
+    const group = list.map((r) => r.group).find((g, i, all) => all.indexOf(g) === i && groupSlug(g) === a.args[0]);
+    if (!group) {
+        location.hash = "#/reports";
+        return;
+    }
+    const items = list.filter((r) => r.group === group);
+    const rb = ribbon([items.map((r) => ({ label: t(REPORT_INFO[r.id]?.title || r.id), icon: "report", onClick: () => (location.hash = `#/reports/${r.id}`) }))]);
+    const body = h("div", { class: "hub" }, ...items.map((r) => h("a", { href: `#/reports/${r.id}` }, h("b", null, t(REPORT_INFO[r.id]?.title || r.id)), h("span", null, t(REPORT_INFO[r.id]?.desc || "")))));
     clear(root);
-    root.append(page({ title: t("Fixed asset reports"), subtitle: t("Reports") }, ...body).el);
+    root.append(page({ title: t(group), subtitle: t("Reports"), ribbon: rb.el }, body).el);
 }
 async function paramDefs(ids) {
     const L = await lookups();
@@ -85,7 +98,7 @@ export async function reportPage(root, a) {
             { label: t("OK"), primary: true, onClick: () => { if (!form.validate())
                     return false; run(form.get()); } },
             { label: t("Cancel"), onClick: () => { if (!hasRun)
-                    location.hash = "#/reports"; } },
+                    location.hash = `#/reports/g/${groupSlug(meta.group)}`; } },
         ]);
     };
     let res = null;
@@ -94,7 +107,7 @@ export async function reportPage(root, a) {
         [{ label: t("Parameters"), icon: "filter", primary: true, onClick: askParams },
             { label: t("Print"), icon: "print", onClick: () => window.print() },
             { label: t("Export to Excel"), icon: "download", onClick: () => res && exportCsv(res, title) }],
-        [{ label: t("All reports"), icon: "back", onClick: () => (location.hash = "#/reports") }],
+        list.filter((r) => r.group === meta.group).map((r) => ({ label: t(REPORT_INFO[r.id]?.title || r.id), icon: "report", active: r.id === id, onClick: () => (location.hash = `#/reports/${r.id}`) })),
     ]);
     clear(root);
     root.append(page({ title, subtitle: t("Reports"), ribbon: rb.el }, paper).el);

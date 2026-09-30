@@ -4,7 +4,7 @@ import { assetFormPage, assetsListPage } from "./pages/assets.js";
 import { dashboardPage } from "./pages/dashboard.js";
 import { auditPage, depreciationPage, journalPage, periodsPage, transactionsPage } from "./pages/depreciation.js";
 import { maintenanceFormPage, maintenanceListPage } from "./pages/maintenance.js";
-import { REPORT_INFO, reportPage, reportsHubPage } from "./pages/reports.js";
+import { groupSlug, reportPage, reportsGroupPage, reportsIndexPage } from "./pages/reports.js";
 import { custodyFormPage, custodyListPage, handoverFormPage } from "./pages/custody.js";
 import { employeeFormPage, employeesListPage } from "./pages/employees.js";
 import { supplierFormPage, suppliersListPage } from "./pages/suppliers.js";
@@ -33,8 +33,9 @@ const ROUTES: Route[] = [
   { re: /^journal$/, fn: journalPage, nav: "#/journal", crumb: "Fixed asset journal" },
   { re: /^transactions$/, fn: transactionsPage, nav: "#/transactions", crumb: "Fixed asset transactions" },
   { re: /^audit$/, fn: auditPage, nav: "#/audit", crumb: "Audit log" },
-  { re: /^reports$/, fn: reportsHubPage, nav: "#/reports", crumb: "Fixed asset reports" },
-  { re: /^reports\/([\w-]+)$/, fn: reportPage, nav: "#/reports", crumb: "Fixed asset reports" },
+  { re: /^reports$/, fn: reportsIndexPage, nav: "#/reports", crumb: "Reports" },
+  { re: /^reports\/g\/([\w-]+)$/, fn: reportsGroupPage, nav: "#/reports", crumb: "Reports" },
+  { re: /^reports\/([\w-]+)$/, fn: reportPage, nav: "#/reports", crumb: "Reports" },
   { re: /^settings(?:\/(\w+))?$/, fn: settingsPage, nav: "#/settings", crumb: "Settings" },
 ];
 
@@ -51,7 +52,7 @@ const NAV: NavSection[] = [
   { id: "maint", section: "Maintenance", items: [{ label: "Maintenance orders", icon: "wrench", href: "#/maintenance" }, { label: "New maintenance order", icon: "plus", href: "#/maintenance/new" }] },
   { id: "periodic", section: "Periodic tasks", items: [{ label: "Depreciation run", icon: "calc", href: "#/depreciation" }, { label: "Depreciation periods", icon: "calendar", href: "#/periods" }] },
   { id: "inq", section: "Inquiries", items: [{ label: "Fixed asset journal", icon: "journal", href: "#/journal" }, { label: "Fixed asset transactions", icon: "list", href: "#/transactions" }, { label: "Audit log", icon: "audit", href: "#/audit" }] },
-  { id: "reports", section: "Reports", reports: true, items: [{ label: "All reports", icon: "report", href: "#/reports" }] },
+  { id: "reports", section: "Reports", reports: true, items: [] },
   { id: "setup", section: "Setup", items: [{ label: "Settings", icon: "setup", href: "#/settings" }] },
 ];
 
@@ -60,18 +61,14 @@ const navKey = "gooya.nav.state";
 const navState = (): Record<string, boolean> => { try { return JSON.parse(localStorage.getItem(navKey) || "{}"); } catch { return {}; } };
 const isOpen = (id: string, def: boolean): boolean => navState()[id] ?? def;
 const setOpen = (id: string, open: boolean) => { try { localStorage.setItem(navKey, JSON.stringify({ ...navState(), [id]: open })); } catch { /* ignore */ } };
-let reportGroups: { group: string; items: NavItem[] }[] = [];
+let reportGroups: { group: string; ids: string[] }[] = [];
 
 async function loadReportGroups(): Promise<void> {
   try {
     const list: { id: string; group: string }[] = await api.get("/api/reports");
-    const order: string[] = [];
-    const map = new Map<string, NavItem[]>();
-    for (const r of list) {
-      if (!map.has(r.group)) { map.set(r.group, []); order.push(r.group); }
-      map.get(r.group)!.push({ label: REPORT_INFO[r.id]?.title || r.id, icon: "report", href: `#/reports/${r.id}` });
-    }
-    reportGroups = order.map((g) => ({ group: g, items: map.get(g)! }));
+    const map = new Map<string, string[]>();
+    for (const r of list) map.set(r.group, [...(map.get(r.group) || []), r.id]);
+    reportGroups = [...map.entries()].map(([group, ids]) => ({ group, ids }));
   } catch { reportGroups = []; }
 }
 
@@ -97,18 +94,7 @@ function buildNav(): HTMLElement {
     body.style.display = secOpen ? "" : "none";
     nav.append(chevronBtn("nav-sec", s.id, t(s.section), secOpen, (o) => { body.style.display = o ? "" : "none"; }), body);
     s.items.forEach((i) => body.append(link(i)));
-    if (s.reports) {
-      for (const g of reportGroups) {
-        const gid = `rep:${g.group}`;
-        const gbody = h("div", { class: "nav-body grp" });
-        const grpOpen = isOpen(gid, false);
-        gbody.style.display = grpOpen ? "" : "none";
-        const btn = chevronBtn("nav-grp", gid, t(g.group), grpOpen, (o) => { gbody.style.display = o ? "" : "none"; });
-        btn.dataset.group = gid;
-        body.append(btn, gbody);
-        g.items.forEach((i) => gbody.append(link(i, true)));
-      }
-    }
+    if (s.reports) reportGroups.forEach((g) => body.append(link({ label: g.group, icon: "report", href: `#/reports/g/${groupSlug(g.group)}` })));
   }
   // live filter: show only matching pages, expand their sections
   filter.addEventListener("input", () => {
@@ -156,7 +142,9 @@ async function render(): Promise<void> {
   for (const r of ROUTES) {
     const m = path.match(r.re);
     if (!m) continue;
-    const navHref = path.startsWith("reports/") ? `#/${path}` : r.nav;
+    const repId = path.startsWith("reports/") && !path.startsWith("reports/g/") ? path.slice(8) : "";
+    const repGroup = repId ? reportGroups.find((g) => g.ids.includes(repId)) : undefined;
+    const navHref = path.startsWith("reports/g/") ? `#/${path}` : repGroup ? `#/reports/g/${groupSlug(repGroup.group)}` : r.nav;
     markActive(navHref);
     crumbEl.textContent = t(r.crumb);
     clear(mainEl); mainEl.scrollTop = 0;

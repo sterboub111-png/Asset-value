@@ -29,13 +29,24 @@ export const REPORT_INFO: Record<string, { title: string; desc: string }> = {
 
 const yearStart = () => `${new Date().getFullYear()}-01-01`;
 
-export async function reportsHubPage(root: HTMLElement, _a: Args): Promise<void> {
+export const groupSlug = (g: string) => g.toLowerCase().replace(/\s+/g, "-");
+
+/** "Reports" without a group: go to the first group (there is no all-reports hub). */
+export async function reportsIndexPage(_root: HTMLElement, _a: Args): Promise<void> {
   const list: Rec[] = await api.get("/api/reports");
-  const groups = [...new Set(list.map((r) => r.group))];
-  const body = groups.map((g) => h("div", null, h("h2", { class: "sec" }, t(g)),
-    h("div", { class: "hub" }, ...list.filter((r) => r.group === g).map((r) =>
-      h("a", { href: `#/reports/${r.id}` }, h("b", null, t(REPORT_INFO[r.id]?.title || r.id)), h("span", null, t(REPORT_INFO[r.id]?.desc || "")))))));
-  clear(root); root.append(page({ title: t("Fixed asset reports"), subtitle: t("Reports") }, ...body).el);
+  location.hash = list.length ? `#/reports/g/${groupSlug(list[0].group)}` : "#/";
+}
+
+/** A report group (Depreciation, Maintenance ...): its reports sit in the action pane and are listed below. */
+export async function reportsGroupPage(root: HTMLElement, a: Args): Promise<void> {
+  const list: Rec[] = await api.get("/api/reports");
+  const group = list.map((r) => r.group).find((g, i, all) => all.indexOf(g) === i && groupSlug(g) === a.args[0]);
+  if (!group) { location.hash = "#/reports"; return; }
+  const items = list.filter((r) => r.group === group);
+  const rb = ribbon([items.map((r) => ({ label: t(REPORT_INFO[r.id]?.title || r.id), icon: "report", onClick: () => (location.hash = `#/reports/${r.id}`) }))]);
+  const body = h("div", { class: "hub" }, ...items.map((r) => h("a", { href: `#/reports/${r.id}` },
+    h("b", null, t(REPORT_INFO[r.id]?.title || r.id)), h("span", null, t(REPORT_INFO[r.id]?.desc || "")))));
+  clear(root); root.append(page({ title: t(group), subtitle: t("Reports"), ribbon: rb.el }, body).el);
 }
 
 async function paramDefs(ids: string[]): Promise<FieldDef[]> {
@@ -87,7 +98,7 @@ export async function reportPage(root: HTMLElement, a: Args): Promise<void> {
     const form = new Form(defs, params);
     dialog(title, h("div", null, h("div", { class: "msgbar" }, t(REPORT_INFO[id]?.desc || "")), form.el), [
       { label: t("OK"), primary: true, onClick: () => { if (!form.validate()) return false; run(form.get() as Record<string, string>); } },
-      { label: t("Cancel"), onClick: () => { if (!hasRun) location.hash = "#/reports"; } },
+      { label: t("Cancel"), onClick: () => { if (!hasRun) location.hash = `#/reports/g/${groupSlug(meta.group)}`; } },
     ]);
   };
 
@@ -97,7 +108,7 @@ export async function reportPage(root: HTMLElement, a: Args): Promise<void> {
     [{ label: t("Parameters"), icon: "filter", primary: true, onClick: askParams },
      { label: t("Print"), icon: "print", onClick: () => window.print() },
      { label: t("Export to Excel"), icon: "download", onClick: () => res && exportCsv(res, title) }],
-    [{ label: t("All reports"), icon: "back", onClick: () => (location.hash = "#/reports") }],
+    list.filter((r) => r.group === meta.group).map((r) => ({ label: t(REPORT_INFO[r.id]?.title || r.id), icon: "report", active: r.id === id, onClick: () => (location.hash = `#/reports/${r.id}`) })),
   ]);
   clear(root); root.append(page({ title, subtitle: t("Reports"), ribbon: rb.el }, paper).el);
   if (!hasRun) { paper.innerHTML = ""; paper.append(h("div", { class: "empty" }, t("Set the report parameters to run it."))); askParams(); return; }

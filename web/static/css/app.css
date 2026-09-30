@@ -84,6 +84,7 @@ body.nav-collapsed .nav { display: none; }
 .rb svg { color: var(--blue); }
 .rb:hover:not(:disabled) { background: var(--hover); }
 .rb.primary { background: var(--blue); color: #fff; } .rb.primary svg { color: #fff; } .rb.primary:hover:not(:disabled) { background: var(--blue-h); }
+.rb.active { background: var(--blue-xl); color: var(--blue-t); font-weight: 600; box-shadow: inset 0 -2px 0 var(--blue); }
 .rb:disabled { color: var(--ink-3); cursor: not-allowed; } .rb:disabled svg { color: var(--ink-3); }
 .rb.danger svg { color: var(--err); }
 .page-body { padding: 16px 24px 40px; flex: 1; }

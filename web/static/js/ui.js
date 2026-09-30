@@ -270,7 +270,7 @@ export function ribbon(groups, titles) {
     groups.forEach((g, gi) => {
         const ge = h("div", { class: "grp" });
         for (const b of g) {
-            const be = h("button", { class: `rb ${b.primary ? "primary" : ""} ${b.danger ? "danger" : ""}`, type: "button", disabled: b.disabled }, icon(b.icon), h("span", null, b.label));
+            const be = h("button", { class: `rb ${b.primary ? "primary" : ""} ${b.danger ? "danger" : ""} ${b.active ? "active" : ""}`, type: "button", disabled: b.disabled }, icon(b.icon), h("span", null, b.label));
             be.addEventListener("click", b.onClick);
             if (b.id)
                 btns[b.id] = be;

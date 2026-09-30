@@ -233,12 +233,15 @@ def init_db() -> None:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ctype}")
     _seed_arabic(con)
     con.execute("UPDATE tbl_Assets SET PurchaseAmount=AcquisitionCost WHERE PurchaseAmount IS NULL")
+    # only insert what is missing (INSERT OR IGNORE still advances the AUTOINCREMENT counter on every start)
     for code, en, ar, sym in CURRENCIES:
-        con.execute("INSERT OR IGNORE INTO tbl_Currencies(CurrencyCode,CurrencyName,CurrencyNameAr,Symbol) VALUES(?,?,?,?)", (code, en, ar, sym))
+        con.execute("INSERT INTO tbl_Currencies(CurrencyCode,CurrencyName,CurrencyNameAr,Symbol) "
+                    "SELECT ?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM tbl_Currencies WHERE CurrencyCode=?)", (code, en, ar, sym, code))
     for key, val, desc in DEFAULT_SETTINGS:
-        con.execute(
-            "INSERT OR IGNORE INTO tbl_Settings(SettingKey,SettingValue,SettingDescription) VALUES(?,?,?)",
-            (key, val, desc))
+        con.execute("INSERT INTO tbl_Settings(SettingKey,SettingValue,SettingDescription) "
+                    "SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM tbl_Settings WHERE SettingKey=?)", (key, val, desc, key))
+    for t, pk in (("tbl_Settings", "SettingID"), ("tbl_Currencies", "CurrencyID")):  # one-off tidy of counters that already ran ahead
+        con.execute("UPDATE sqlite_sequence SET seq=(SELECT COALESCE(MAX(%s),0) FROM %s) WHERE name=?" % (pk, t), (t,))
     con.commit()
     con.close()
 
