@@ -270,6 +270,6 @@ missing = [k for k in keys if k not in ar and " " in k]
 print(len(ar), "entries; untranslated multi-word keys:", len(missing))
 print("\n".join(missing))
 body = "".join(f"  {json.dumps(k, ensure_ascii=False)}: {json.dumps(v, ensure_ascii=False)},\n" for k, v in ar.items())
-(ROOT / "web" / "src" / "ar.ts").write_text(
-    "// Arabic translations: English UI string -> Arabic. Missing keys fall back to English.\n"
-    "export const AR: Record<string, string> = {\n" + body + "};\n", encoding="utf-8")
+with open(ROOT / "web" / "src" / "ar.ts", "w", encoding="utf-8", newline="\n") as fh:  # LF even on Windows
+    fh.write("// Arabic translations: English UI string -> Arabic. Missing keys fall back to English.\n"
+             "export const AR: Record<string, string> = {\n" + body + "};\n")
