@@ -92,11 +92,11 @@ export function toast(message: string, kind: "ok" | "err" | "" = ""): void {
 export const fail = (e: unknown) => toast(e instanceof Error ? t(e.message) : String(e), "err");
 
 export interface DlgButton { label: string; primary?: boolean; danger?: boolean; onClick?: () => Promise<boolean | void> | boolean | void; }
-export function dialog(title: string, content: Node, buttons: DlgButton[], opts: { wide?: boolean } = {}) {
+export function dialog(title: string, content: Node, buttons: DlgButton[], opts: { wide?: boolean; onClose?: () => void } = {}) {
   const err = h("div", { class: "msgbar err", style: "display:none" });
   const box = h("div", { class: `dlg ${opts.wide ? "wide" : ""}`, role: "dialog", "aria-modal": "true", "aria-label": title });
   const overlay = h("div", { class: "overlay" }, box);
-  const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+  const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); opts.onClose?.(); };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") close();
     else if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT" && (e.target as HTMLInputElement).type !== "file" && box.contains(e.target as Node)) { e.preventDefault(); (foot.querySelector(".btn.primary, .btn.danger") as HTMLButtonElement | null)?.click(); }
@@ -129,11 +129,11 @@ export function confirmDialog(message: string, opts: { danger?: boolean; ok?: st
   return new Promise((resolve) => {
     let done = false;
     const finish = (v: boolean) => { if (!done) { done = true; resolve(v); } };
-    const d = dialog(opts.title || t("Confirm"), h("p", { style: "margin:0" }, message), [
+    // finish(true) runs before the dialog closes; any other way of closing (Cancel, X, Esc, click outside) answers "no"
+    dialog(opts.title || t("Confirm"), h("p", { style: "margin:0" }, message), [
       { label: opts.ok || t("Yes"), primary: !opts.danger, danger: opts.danger, onClick: () => { finish(true); } },
-      { label: t("Cancel"), onClick: () => { finish(false); } },
-    ]);
-    d.el.parentElement!.addEventListener("mousedown", () => setTimeout(() => finish(false), 0));
+      { label: t("Cancel") },
+    ], { onClose: () => finish(false) });
   });
 }
 

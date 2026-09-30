@@ -131,8 +131,8 @@ export async function taxPage(root: HTMLElement, _a: Args): Promise<void> {
     { name: "VATEnabled", label: "Track VAT on asset purchases", type: "select", options: yesNo, required: true },
     { name: "VATRate", label: "Standard VAT rate (%)", type: "number", step: "0.01", required: true },
     { name: "VATNumber", label: "Company VAT registration number" },
-    { name: "VATDefaultApplicable", label: "New assets are purchased with VAT", type: "select", options: yesNo, hint: "Default for the asset form; it can be changed per asset." },
-    { name: "VATDefaultInclusive", label: "Invoice amounts include VAT", type: "select", options: [{ value: "1", label: t("Inclusive of VAT") }, { value: "0", label: t("Exclusive of VAT") }], hint: "Default for the asset form; it can be changed per asset." },
+    { name: "VATDefaultApplicable", label: "New assets are purchased with VAT", type: "select", options: yesNo },
+    { name: "VATDefaultInclusive", label: "Invoice amounts include VAT", type: "select", options: [{ value: "1", label: t("Inclusive of VAT") }, { value: "0", label: t("Exclusive of VAT") }] },
   ], L.settings);
   const save = guard(async () => {
     if (!form.validate()) return;
@@ -141,6 +141,5 @@ export async function taxPage(root: HTMLElement, _a: Args): Promise<void> {
   const rb = ribbon([[{ label: t("Save"), icon: "save", primary: true, onClick: save }]]);
   clear(root);
   root.append(page({ title: t("Tax (VAT)"), subtitle: t("Settings"), ribbon: rb.el },
-    h("div", { class: "msgbar" }, t("Fixed assets are always recorded and reported at their net cost, excluding VAT. VAT only marks whether an asset was purchased with VAT, so reports and depreciation are never affected by it.")),
     h("div", { class: "fasttab open" }, h("div", { class: "content", style: "display:block" }, form.el))).el);
 }

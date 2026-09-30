@@ -8,6 +8,7 @@ type Args = { args: string[]; query: URLSearchParams };
 const typeOpts = (L: Rec) => (L.supplier_types as string[]).map((x) => ({ value: x, label: t(x) }));
 
 const general = (L: Rec): FieldDef[] => [
+  { name: "SupplierCode", label: "Supplier code", required: true, maxlength: 20 },
   { name: "SupplierName", label: "Supplier name", required: true, maxlength: 160, wide: true },
   { name: "SupplierNameAr", label: "Name (Arabic)", maxlength: 160, wide: true },
   { name: "SupplierType", label: "Type", type: "select", required: true, options: typeOpts(L) },
@@ -27,8 +28,9 @@ const tax: FieldDef[] = [
 const notes: FieldDef[] = [{ name: "Notes", label: "Notes", type: "textarea", wide: true }];
 
 // ---- quick-add dialog used from the asset / maintenance forms
-export function quickSupplier(L: Rec, onSaved: (s: Rec) => void): void {
-  const form = new Form([...general(L), ...contact, ...address, ...tax, ...notes], { SupplierType: "Supplier", IsActive: true, Country: t("Saudi Arabia") });
+export async function quickSupplier(L: Rec, onSaved: (s: Rec) => void): Promise<void> {
+  const code = (await api.get<Rec>("/api/suppliers/next-code")).code;
+  const form = new Form([...general(L), ...contact, ...address, ...tax, ...notes], { SupplierCode: code, SupplierType: "Supplier", IsActive: true, Country: t("Saudi Arabia") });
   dialog(t("New supplier"), form.el, [
     { label: t("Save"), primary: true, onClick: async () => {
         if (!form.validate()) return false;
@@ -86,7 +88,7 @@ export async function supplierFormPage(root: HTMLElement, a: Args): Promise<void
   const L = await lookups(true);
   let sup: Rec | null = null;
   if (!isNew) { try { sup = await api.get(`/api/suppliers/${a.args[0]}`); } catch (e) { fail(e); location.hash = "#/suppliers"; return; } }
-  const v: Rec = sup ? { ...sup } : { SupplierType: "Supplier", IsActive: true, Country: t("Saudi Arabia") };
+  const v: Rec = sup ? { ...sup } : { SupplierCode: (await api.get<Rec>("/api/suppliers/next-code")).code, SupplierType: "Supplier", IsActive: true, Country: t("Saudi Arabia") };
   const defs = [general(L), contact, address, tax, notes];
   const forms = defs.map((d) => new Form(d, v));
   const collect = (): Rec => Object.assign({}, ...forms.map((f) => f.get()));

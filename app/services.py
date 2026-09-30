@@ -226,6 +226,14 @@ def save_settings(con, data: dict) -> dict:
             raise ApiError("Day of month must be 1-28")
         if k == "BackupKeep" and not (v.isdigit() and int(v) <= 999):
             raise ApiError("Backups to keep must be 0-999")
+        if k in ("BackupFolder", "AttachmentFolder") and v:
+            try:
+                Path(v).mkdir(parents=True, exist_ok=True)
+                probe = Path(v) / ".gooya_write_test"
+                probe.write_text("ok")
+                probe.unlink()
+            except OSError:
+                raise ApiError("This folder cannot be used (missing or not writable)")
         con.execute("UPDATE tbl_Settings SET SettingValue=? WHERE SettingKey=?", (v, k))
     audit(con, "UPDATE", "tbl_Settings", "-", ", ".join(data))
     con.commit()
@@ -1094,6 +1102,10 @@ def get_supplier(con, sid: int) -> dict:
     return sup
 
 
+def next_supplier_code(con) -> str:
+    return _next_supplier_code(con)
+
+
 def _next_supplier_code(con) -> str:
     mx = 0
     for r in con.execute("SELECT SupplierCode FROM tbl_Suppliers"):
@@ -1127,8 +1139,13 @@ def save_supplier(con, data: dict, sid: int | None = None) -> dict:
         if dup:
             raise ApiError(f"This tax number already belongs to supplier {dup['SupplierCode']}")
     active = 0 if data.get("IsActive") in (False, 0, "0", "false") else 1
+    code = (data.get("SupplierCode") or "").strip()
+    if len(code) > 20:
+        raise ApiError("Supplier code is too long")
     if sid is None:
-        code = _next_supplier_code(con)
+        code = code or _next_supplier_code(con)
+        if one(con, "SELECT 1 x FROM tbl_Suppliers WHERE lower(SupplierCode)=lower(?)", (code,), raw=True):
+            raise ApiError(f"Supplier code {code} already exists")
         cur = con.execute(f"INSERT INTO tbl_Suppliers(SupplierCode,{','.join(v)},IsActive,CreatedAt,CreatedBy) VALUES(?,{','.join('?' * len(v))},?,?,?)",
                           [code, *v.values(), active, now(), USER])
         sid = cur.lastrowid
@@ -1137,8 +1154,11 @@ def save_supplier(con, data: dict, sid: int | None = None) -> dict:
         cur_s = one(con, "SELECT SupplierCode, SupplierName FROM tbl_Suppliers WHERE SupplierID=?", (sid,), raw=True)
         if not cur_s:
             raise ApiError("Supplier not found", 404)
-        con.execute(f"UPDATE tbl_Suppliers SET {','.join(k + '=?' for k in v)},IsActive=?,ModifiedAt=?,ModifiedBy=? WHERE SupplierID=?",
-                    [*v.values(), active, now(), USER, sid])
+        code = code or cur_s["SupplierCode"]
+        if one(con, "SELECT 1 x FROM tbl_Suppliers WHERE lower(SupplierCode)=lower(?) AND SupplierID<>?", (code, sid), raw=True):
+            raise ApiError(f"Supplier code {code} already exists")
+        con.execute(f"UPDATE tbl_Suppliers SET SupplierCode=?,{','.join(k + '=?' for k in v)},IsActive=?,ModifiedAt=?,ModifiedBy=? WHERE SupplierID=?",
+                    [code, *v.values(), active, now(), USER, sid])
         if cur_s["SupplierName"] != v["SupplierName"]:  # keep the denormalised names on linked records in step
             con.execute("UPDATE tbl_Assets SET SupplierName=? WHERE SupplierID=?", (v["SupplierName"], sid))
             con.execute("UPDATE tbl_Maintenance SET Vendor=? WHERE SupplierID=?", (v["SupplierName"], sid))
@@ -1162,8 +1182,10 @@ BACKUP_RE = re.compile(r"^GooyaAsset_(backup|auto)_\d{4}-\d{2}-\d{2}_\d{6}\.zip$
 
 
 def _backup_root(con) -> Path:
-    folder = get_settings(con).get("BackupFolder")
-    root = Path(folder) if folder else db.ROOT / "backups"
+    folder = (get_settings(con).get("BackupFolder") or "").strip()
+    if not folder:
+        raise ApiError("Choose the backup folder first (Settings > Backup > Location)")
+    root = Path(folder)
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -1204,6 +1226,9 @@ def create_backup(con, auto: bool = False) -> dict:
 
 
 def list_backups(con) -> dict:
+    folder = (get_settings(con).get("BackupFolder") or "").strip()
+    if not folder:
+        return {"folder": "", "custom_folder": "", "items": [], "schedule": backup_schedule(con)}
     root = _backup_root(con)
     items = []
     for p in sorted(root.glob("GooyaAsset_*.zip"), reverse=True):
@@ -1211,7 +1236,7 @@ def list_backups(con) -> dict:
             st = p.stat()
             items.append({"name": p.name, "size": st.st_size, "kind": "auto" if "_auto_" in p.name else "manual",
                           "created": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")})
-    return {"folder": str(root), "items": items, "schedule": backup_schedule(con)}
+    return {"folder": str(root), "custom_folder": get_settings(con).get("BackupFolder") or "", "items": items, "schedule": backup_schedule(con)}
 
 
 def backup_path(con, name: str) -> Path:
@@ -1263,7 +1288,7 @@ def run_due_backup(con, at: datetime | None = None) -> dict | None:
     """Called by the scheduler thread: takes the automatic backup when its slot has passed and it was not taken yet."""
     at = at or datetime.now()
     sch = backup_schedule(con, at)
-    if sch["mode"] == "OFF" or not sch["due_slot"]:
+    if sch["mode"] == "OFF" or not sch["due_slot"] or not (get_settings(con).get("BackupFolder") or "").strip():
         return None
     if sch["last_run"] and sch["last_run"] >= sch["due_slot"]:
         return None
@@ -1287,3 +1312,11 @@ def run_due_backup(con, at: datetime | None = None) -> dict | None:
         _put_setting(con, "BackupLastResult", f"Error: {e}")
         con.commit()
         return None
+
+
+def open_backup_folder(con) -> dict:
+    """Opens the backup folder in Windows Explorer (the app only ever runs on the user's own PC)."""
+    root = _backup_root(con)
+    if hasattr(os, "startfile"):
+        os.startfile(str(root))  # noqa: S606
+    return {"folder": str(root)}

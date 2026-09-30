@@ -67,18 +67,18 @@ export async function dashboardPage(root: HTMLElement): Promise<void> {
         h("span", null, pill(r.TransactionType), " ", `${r.AssetCode} · ${r.AssetName}`), h("span", null, r.TransactionDate))))
     : h("div", { class: "empty" }, t("No transactions yet."));
 
-  const card = (title: string, body: Node, more?: [string, string]) =>
-    h("div", { class: "card" }, h("h3", null, h("span", null, title), more ? h("a", { href: more[1], style: "font-size:12px;font-weight:400" }, more[0]) : null), h("div", { class: "card-body" }, body));
+  const card = (title: string, body: Node, more?: [string, string], span = 4) =>
+    h("div", { class: `card span-${span}` }, h("h3", null, h("span", null, title), more ? h("a", { href: more[1], style: "font-size:12px;font-weight:400" }, more[0]) : null), h("div", { class: "card-body" }, body));
 
   const pg = page({ title: t("Fixed assets"), subtitle: t("Workspace") },
     tiles,
-    h("div", { class: "cards" },
-      card(t("Net book value by group"), groups, [t("Open register"), "#/reports/asset-register"]),
-      card(t("Depreciation posted by period"), trendEl, [t("Schedule"), "#/reports/depreciation-schedule"]),
-      card(t("To do"), todo),
-      card(t("Maintenance due"), maint, [t("All"), "#/maintenance"]),
-      card(t("Warranties expiring soon"), warr),
-      card(t("Recent transactions"), recent, [t("All"), "#/transactions"])));
+    h("div", { class: "dash" },
+      card(t("Net book value by group"), groups, [t("Open register"), "#/reports/asset-register"], 7),
+      card(t("Depreciation posted by period"), trendEl, [t("Schedule"), "#/reports/depreciation-schedule"], 5),
+      card(t("To do"), todo, undefined, 4),
+      card(t("Maintenance due"), maint, [t("All"), "#/maintenance"], 4),
+      card(t("Warranties expiring soon"), warr, undefined, 4),
+      card(t("Recent transactions"), recent, [t("All"), "#/transactions"], 12)));
   clear(root); root.append(pg.el);
   void icon;
 }

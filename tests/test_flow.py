@@ -188,8 +188,17 @@ assert sc["due_slot"].startswith("2027-01-28") and sc["next_run"].startswith("20
 s.save_settings(con, {"BackupSchedule": "DAILY", "BackupTime": "02:00"})
 import tempfile as _tf
 s.db.ROOT = Path(_tf.mkdtemp())
+expect_error(s.create_backup, con, contains="backup folder")
+s.save_settings(con, {"BackupFolder": str(Path(_tf.mkdtemp()))})
 r1 = s.run_due_backup(con, _dt.now().replace(hour=23, minute=59)); assert r1 and r1["name"].startswith("GooyaAsset_auto_")
 assert s.run_due_backup(con, _dt.now().replace(hour=23, minute=59)) is None  # already taken for this slot
 assert s.list_backups(con)["items"][0]["kind"] == "auto"
 s.save_settings(con, {"BackupSchedule": "OFF"}); assert s.run_due_backup(con) is None
+
+# ---- supplier code is editable
+assert s.next_supplier_code(con) == "SUP-0002"
+s2 = s.save_supplier(con, {"SupplierName": "Zed Co", "SupplierCode": "ZED-01"}); assert s2["SupplierCode"] == "ZED-01"
+expect_error(s.save_supplier, con, {"SupplierName": "Other Co", "SupplierCode": "zed-01"}, contains="already exists")
+s2 = s.save_supplier(con, {**s2, "SupplierCode": "SUP-0002"}, s2["SupplierID"]); assert s2["SupplierCode"] == "SUP-0002"
+expect_error(s.save_supplier, con, {**s2, "SupplierCode": "SUP-0001"}, s2["SupplierID"], contains="already exists")
 print("All flow tests passed")

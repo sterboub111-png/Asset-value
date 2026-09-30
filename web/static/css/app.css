@@ -79,18 +79,24 @@ body.nav-collapsed .nav { display: none; }
 @media (max-width: 1100px) { .page-body.with-factbox { grid-template-columns: 1fr; } }
 
 /* ---- tiles / cards */
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 250px)); gap: 12px; margin-bottom: 20px; }
 .tile { background: var(--paper); border: 1px solid var(--line); padding: 14px 16px; cursor: default; border-top: 3px solid var(--blue); }
 .tile.link { cursor: pointer; } .tile.link:hover { box-shadow: var(--shadow); }
 .tile .lbl { color: var(--ink-2); font-size: 13px; } .tile .val { font-size: 28px; font-weight: 300; margin-top: 4px; letter-spacing: -.01em; }
 .tile .val small { font-size: 13px; color: var(--ink-2); font-weight: 400; }
 .tile.ok { border-top-color: var(--ok); } .tile.warn { border-top-color: #ffaa44; } .tile.gray { border-top-color: var(--ink-3); }
+.dash { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.dash .card { display: flex; flex-direction: column; min-width: 0; }
+.dash .card .card-body { flex: 1; min-height: 190px; overflow: auto; }
+.dash .span-4 { grid-column: span 4; } .dash .span-5 { grid-column: span 5; } .dash .span-7 { grid-column: span 7; } .dash .span-12 { grid-column: span 12; }
+@media (max-width: 1280px) { .dash .span-4 { grid-column: span 6; } .dash .span-5, .dash .span-7 { grid-column: span 6; } }
+@media (max-width: 820px) { .dash .card { grid-column: span 12 !important; } }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
 .card { background: var(--paper); border: 1px solid var(--line); }
 .card > h3 { margin: 0; padding: 12px 16px; font-size: 15px; font-weight: 600; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
 .card .card-body { padding: 12px 16px; }
 .empty { color: var(--ink-3); padding: 24px 12px; text-align: center; }
-.bar-row { display: grid; grid-template-columns: 150px 1fr 110px; gap: 10px; align-items: center; margin: 7px 0; font-size: 13px; }
+.bar-row { display: grid; grid-template-columns: minmax(120px, 190px) 1fr 110px; gap: 10px; align-items: center; margin: 7px 0; font-size: 13px; }
 .bar-row .track { background: var(--blue-xl); height: 16px; position: relative; } .bar-row .fill { background: var(--blue); height: 100%; } .bar-row .fill2 { background: #9cc8ec; height: 100%; position: absolute; top: 0; inset-inline-start: 0; }
 .bar-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .bar-row .amt { text-align: end; font-variant-numeric: tabular-nums; }
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; } .legend i { display: inline-block; width: 10px; height: 10px; margin-inline-end: 5px; }
@@ -126,8 +132,8 @@ table.grid td a.lnk { font-weight: 600; }
 [dir=rtl] .fasttab > header svg { transform: scaleX(-1); } [dir=rtl] .fasttab.open > header svg { transform: rotate(90deg); }
 .fasttab > .content { display: none; padding: 6px 16px 16px; border-top: 1px solid var(--line); }
 .fasttab.open > .content { display: block; }
-.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px 24px; padding-top: 10px; }
-.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .field.wide { grid-column: 1 / -1; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 320px)); gap: 12px 32px; padding-top: 10px; }
+.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .field.wide { grid-column: 1 / -1; max-width: 672px; }
 .field label { font-size: 12px; color: var(--ink-2); } .field label .req { color: var(--err); margin-inline-start: 2px; }
 .field input, .field select, .field textarea, .dlg input, .dlg select, .dlg textarea, .gt-input {
   border: 1px solid var(--line-2); border-radius: var(--radius); padding: 5px 8px; min-height: 30px; background: var(--paper); width: 100%; }

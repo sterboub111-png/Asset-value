@@ -96,7 +96,7 @@ export function dialog(title, content, buttons, opts = {}) {
     const err = h("div", { class: "msgbar err", style: "display:none" });
     const box = h("div", { class: `dlg ${opts.wide ? "wide" : ""}`, role: "dialog", "aria-modal": "true", "aria-label": title });
     const overlay = h("div", { class: "overlay" }, box);
-    const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+    const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); opts.onClose?.(); };
     const onKey = (e) => {
         if (e.key === "Escape")
             close();
@@ -142,11 +142,11 @@ export function confirmDialog(message, opts = {}) {
             done = true;
             resolve(v);
         } };
-        const d = dialog(opts.title || t("Confirm"), h("p", { style: "margin:0" }, message), [
+        // finish(true) runs before the dialog closes; any other way of closing (Cancel, X, Esc, click outside) answers "no"
+        dialog(opts.title || t("Confirm"), h("p", { style: "margin:0" }, message), [
             { label: opts.ok || t("Yes"), primary: !opts.danger, danger: opts.danger, onClick: () => { finish(true); } },
-            { label: t("Cancel"), onClick: () => { finish(false); } },
-        ]);
-        d.el.parentElement.addEventListener("mousedown", () => setTimeout(() => finish(false), 0));
+            { label: t("Cancel") },
+        ], { onClose: () => finish(false) });
     });
 }
 export class Form {

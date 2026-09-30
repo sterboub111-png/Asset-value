@@ -141,6 +141,9 @@ def _md2(c, i): return s.delete_maintenance(c.con, int(i))
 @route("POST", "/api/maintenance/(\\d+)/(start|complete|cancel)")
 def _ma2(c, i, act): return s.maintenance_action(c.con, int(i), act, c.body)
 
+@route("GET", "/api/suppliers/next-code")
+def _snc(c): return {"code": s.next_supplier_code(c.con)}
+
 @route("GET", "/api/suppliers")
 def _sl(c): return s.list_suppliers(c.con, c.q("q"), c.q("active"), c.q("type"))
 
@@ -158,6 +161,9 @@ def _sd(c, i): return s.delete_supplier(c.con, int(i))
 
 @route("GET", "/api/backups")
 def _bl(c): return s.list_backups(c.con)
+
+@route("POST", "/api/backups/open-folder")
+def _bo(c): return s.open_backup_folder(c.con)
 
 @route("POST", "/api/backups")
 def _bc(c): return s.create_backup(c.con)
