@@ -70,7 +70,7 @@ export async function depreciationPage(root: HTMLElement, a: Args): Promise<void
         if (await confirmDialog(t("Discard the unposted proposal?"), { danger: true, ok: t("Discard") })) { await api.del(`/api/depreciation/${cur.PeriodID}/drafts`); await refresh(); } }) }],
     [{ label: t("Journal"), icon: "journal", onClick: () => (location.hash = `#/journal?period=${cur.PeriodID}`) },
      { label: t("Refresh"), icon: "refresh", onClick: refresh }],
-  ]);
+  ], [t("Depreciation"), t("View")]);
   const btns = rb.btns;
   const filters = h("div", { class: "filters" }, h("div", { class: "field" }, h("label", null, t("Period")), sel));
   const pg = page({ title: t("Depreciation run"), subtitle: t("Periodic tasks"), ribbon: rb.el }, filters, info, grid.el);

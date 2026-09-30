@@ -77,7 +77,7 @@ export async function suppliersListPage(root, _a) {
                 else
                     toast(t("Select a supplier first.")); } }],
         [{ label: t("Refresh"), icon: "refresh", onClick: load }, { label: t("Reports"), icon: "report", onClick: () => (location.hash = "#/reports/suppliers-directory") }],
-    ]);
+    ], [t("Suppliers"), t("View")]);
     clear(root);
     root.append(page({ title: t("Suppliers"), subtitle: t("Suppliers"), ribbon: rb.el }, grid.el).el);
     await load();

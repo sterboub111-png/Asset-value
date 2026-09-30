@@ -15,6 +15,7 @@ export const REPORT_INFO: Record<string, { title: string; desc: string }> = {
   disposals: { title: "Disposals and gain / loss", desc: "Assets sold or scrapped, with net book value, proceeds and result." },
   transactions: { title: "Asset transactions", desc: "Acquisitions, transfers, status changes and disposals." },
   "fully-depreciated": { title: "Fully depreciated assets", desc: "Assets still in use whose net book value reached the residual value." },
+  "vat-purchases": { title: "VAT on asset purchases", desc: "Net cost, VAT amount and invoice basis of every purchase, to tell VAT and non-VAT assets apart." },
   "suppliers-directory": { title: "Suppliers directory", desc: "All suppliers with their contact, tax and payment details." },
   "supplier-purchases": { title: "Purchases by supplier", desc: "Assets bought from each supplier with invoice and cost." },
   "supplier-summary": { title: "Supplier spend summary", desc: "Purchases and completed maintenance cost per supplier." },
@@ -48,6 +49,7 @@ async function paramDefs(ids: string[]): Promise<FieldDef[]> {
       { value: "category", label: t("Fixed asset group") }, { value: "location", label: t("Location") }, { value: "costcenter", label: t("Cost center") }] },
     fiscal_year: { name: "fiscal_year", label: "Fiscal year", type: "number", step: "1", required: true },
     type: { name: "type", label: "Transaction type", type: "select", options: ["ACQUISITION", "TRANSFER", "STATUS", "DISPOSAL"].map((s) => ({ value: s, label: t(s) })) },
+    vat: { name: "vat", label: "VAT status", type: "select", options: [{ value: "1", label: t("With VAT") }, { value: "0", label: t("No VAT") }] },
     sactive: { name: "sactive", label: "Status", type: "select", options: [{ value: "1", label: t("Active") }, { value: "0", label: t("Inactive") }] },
     stype: { name: "stype", label: "Supplier type", type: "select", options: L.supplier_types.map((s: string) => ({ value: s, label: t(s) })) },
     supplier: { name: "supplier", label: "Supplier", type: "select", options: L.suppliers.map((s: Rec) => ({ value: s.SupplierID, label: `${s.SupplierCode} — ${nm(s, "SupplierName")}` })) },
@@ -67,6 +69,7 @@ export async function reportPage(root: HTMLElement, a: Args): Promise<void> {
   if (!meta) { location.hash = "#/reports"; return; }
   const title = t(REPORT_INFO[id]?.title || id);
   const defs = await paramDefs(meta.params);
+  const L = await lookups();
   const defaults: Record<string, string> = { as_of: today(), from: yearStart(), to: today(), fiscal_year: String(new Date().getFullYear()), group_by: "category", mgroup: "asset", days: "30" };
   const params: Record<string, string> = {};
   for (const d of defs) params[d.name] = a.query.get(d.name) ?? (a.query.has("run") ? "" : defaults[d.name] ?? "");
@@ -98,18 +101,22 @@ export async function reportPage(root: HTMLElement, a: Args): Promise<void> {
     const q = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v !== "")));
     res = await api.get<ReportResult>(`/api/reports/${id}?${q}`);
   } catch (e) { fail(e); paper.innerHTML = ""; paper.append(h("div", { class: "msgbar err" }, e instanceof Error ? t(e.message) : String(e))); return; }
-  clear(paper); paper.append(renderReport(res, title));
+  const lines = defs.filter((d) => params[d.name]).map((d) => {
+    const opt = d.options?.find((o) => String(o.value) === params[d.name]);
+    return { label: t(d.label), value: opt ? opt.label : params[d.name] };
+  });
+  clear(paper); paper.append(renderReport(res, title, lines, L.user));
 }
 
 const isNum = (type: string) => type === "money" || type === "int" || type === "pct";
 
-function renderReport(r: ReportResult, title: string): HTMLElement {
+function renderReport(r: ReportResult, title: string, paramLines: { label: string; value: string }[], user: string): HTMLElement {
   const cols = r.columns;
   const totalKeys = r.totals || [];
   const sum = (rows: Rec[], key: string) => rows.reduce((s, x) => s + Number(x[key] || 0), 0);
   const tr = (cls: string, cells: any[]) => h("tr", { class: cls }, ...cells);
   const tbody = h("tbody");
-  const ENUM = new Set(["Status", "MaintenanceType", "Priority", "Timing", "Source", "TransactionType", "PostingStatus", "JournalType"]);
+  const ENUM = new Set(["VatStatus", "Basis", "Status", "MaintenanceType", "Priority", "Timing", "Source", "TransactionType", "PostingStatus", "JournalType"]);
   const cell = (c: { key: string; type: string }, row: Rec) => h("td", { class: isNum(c.type) ? "num" : "" }, ENUM.has(c.key) ? t(String(row[c.key] ?? "")) : cellValue(c, row[c.key]));
   const totalsRow = (cls: string, label: string, rows: Rec[], keys: string[]) =>
     tr(cls, cols.map((c, i) => h("td", { class: isNum(c.type) ? "num" : "" }, keys.includes(c.key) ? cellValue(c, sum(rows, c.key)) : i === 0 ? label : "")));
@@ -129,11 +136,18 @@ function renderReport(r: ReportResult, title: string): HTMLElement {
   if (totalKeys.length && r.rows.length) tbody.append(totalsRow("tot", t("Total"), r.rows, totalKeys));
 
   const thead = h("thead", null, tr("", cols.map((c) => h("th", { class: isNum(c.type) ? "num" : "" }, t(c.label)))));
-  return h("div", null,
-    h("div", { class: "rh" }, h("div", null, h("h2", null, title), h("div", { class: "co" }, [r.company, r.subtitle ? t(r.subtitle.replace(/^As of /, `${t("As of")} `)) : ""].filter(Boolean).join(" — "))),
-      h("div", { class: "meta" }, h("div", null, `${t("Currency")}: ${r.currency}`), h("div", null, `${t("Printed")}: ${r.generated}`))),
+  const when = new Date();
+  const stamp = `${r.generated} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
+  const period = r.subtitle ? t(r.subtitle.replace(/^As of /, `${t("As of")} `)) : "";
+  return h("div", { class: "rpt-doc" },
+    h("div", { class: "rh" },
+      h("div", { class: "rh-l" }, h("div", { class: "co" }, r.company || "Gooya Asset"), h("h2", null, title),
+        period && !paramLines.length ? h("div", { class: "period" }, period) : null,
+        paramLines.length ? h("div", { class: "params" }, ...paramLines.map((p) => h("span", null, h("b", null, `${p.label}: `), p.value))) : null),
+      h("div", { class: "meta" }, h("div", null, h("span", null, `${t("Printed")}: `), stamp), h("div", null, h("span", null, `${t("Printed by")}: `), user),
+        h("div", null, h("span", null, `${t("Currency")}: `), r.currency))),
     h("div", { style: "overflow:auto" }, h("table", { class: "rpt" }, thead, tbody)),
-    h("div", { class: "rpt-foot" }, h("span", null, `Gooya Asset · ${t("{0} records", r.rows.length)}`), h("span", null, getLang() === "ar" ? "" : "")));
+    h("div", { class: "rpt-foot" }, h("span", null, `Gooya Asset · ${t("{0} records", r.rows.length)}`), h("span", null, title)));
 }
 
 function exportCsv(r: ReportResult, title: string) {

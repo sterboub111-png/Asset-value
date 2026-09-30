@@ -79,7 +79,7 @@ export async function depreciationPage(root, a) {
                 }) }],
         [{ label: t("Journal"), icon: "journal", onClick: () => (location.hash = `#/journal?period=${cur.PeriodID}`) },
             { label: t("Refresh"), icon: "refresh", onClick: refresh }],
-    ]);
+    ], [t("Depreciation"), t("View")]);
     const btns = rb.btns;
     const filters = h("div", { class: "filters" }, h("div", { class: "field" }, h("label", null, t("Period")), sel));
     const pg = page({ title: t("Depreciation run"), subtitle: t("Periodic tasks"), ribbon: rb.el }, filters, info, grid.el);

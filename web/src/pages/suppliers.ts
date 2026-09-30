@@ -75,7 +75,7 @@ export async function suppliersListPage(root: HTMLElement, _a: Args): Promise<vo
     [{ label: t("New"), icon: "plus", primary: true, onClick: () => (location.hash = "#/suppliers/new") },
      { label: t("Edit"), icon: "edit", onClick: () => { const r = grid.selected(); if (r) location.hash = `#/suppliers/${r.SupplierID}`; else toast(t("Select a supplier first.")); } }],
     [{ label: t("Refresh"), icon: "refresh", onClick: load }, { label: t("Reports"), icon: "report", onClick: () => (location.hash = "#/reports/suppliers-directory") }],
-  ]);
+  ], [t("Suppliers"), t("View")]);
   clear(root); root.append(page({ title: t("Suppliers"), subtitle: t("Suppliers"), ribbon: rb.el }, grid.el).el);
   await load();
 }

@@ -112,6 +112,8 @@ MASTERS: dict[str, dict] = {
                                 ("tbl_AssetCategories", "DepExpenseAccountID"),
                                 ("tbl_AssetCategories", "GainAccountID"), ("tbl_AssetCategories", "LossAccountID")],
                        order="AccountCode"),
+    "currencies": dict(table="tbl_Currencies", pk="CurrencyID", code="CurrencyCode", name="CurrencyName",
+                       fields=["CurrencyCode", "CurrencyName", "CurrencyNameAr", "Symbol", "IsActive"], used_by=[], order="CurrencyCode"),
     "methods": dict(table="tbl_DepreciationMethods", pk="MethodID", code="MethodCode", name="MethodName",
                     fields=["MethodCode", "MethodName", "MethodNameAr", "IsActive"],
                     used_by=[("tbl_Assets", "MethodID"), ("tbl_AssetCategories", "MethodID")], order="MethodCode"),
@@ -145,6 +147,15 @@ def master_save(con, name: str, data: dict, rec_id: int | None = None) -> dict:
     for req in (m["code"], m["name"]):
         if req in vals and not vals[req]:
             raise ApiError(f"{req} is required")
+    if name == "currencies":
+        if "CurrencyCode" in vals:
+            vals["CurrencyCode"] = (vals["CurrencyCode"] or "").upper()
+            if not re.fullmatch(r"[A-Z]{3}", vals["CurrencyCode"]):
+                raise ApiError("Currency code must be 3 letters (ISO 4217)")
+        if vals.get("IsActive") == 0 and rec_id:
+            cur = one(con, "SELECT CurrencyCode FROM tbl_Currencies WHERE CurrencyID=?", (rec_id,), raw=True)
+            if cur and cur["CurrencyCode"] == get_settings(con).get("DefaultCurrency"):
+                raise ApiError("The default currency cannot be made inactive")
     if name == "categories":
         if vals.get("UsefulLifeYears") not in (None, ""):
             life = num(vals["UsefulLifeYears"], "Useful life", None, 0)
@@ -171,6 +182,10 @@ def master_save(con, name: str, data: dict, rec_id: int | None = None) -> dict:
 
 def master_delete(con, name: str, rec_id: int) -> dict:
     m = _master(name)
+    if name == "currencies":
+        cur = one(con, "SELECT CurrencyCode FROM tbl_Currencies WHERE CurrencyID=?", (rec_id,), raw=True)
+        if cur and cur["CurrencyCode"] == get_settings(con).get("DefaultCurrency"):
+            raise ApiError("The default currency cannot be deleted")
     for table, col in m["used_by"]:
         if one(con, f"SELECT 1 x FROM {table} WHERE {col}=? LIMIT 1", (rec_id,)):
             raise ApiError("This record is in use and cannot be deleted. Mark it inactive instead.")
@@ -190,6 +205,27 @@ def save_settings(con, data: dict) -> dict:
             raise ApiError("Fiscal year start month must be 1-12")
         if k == "AssetCodePrefix" and not v:
             raise ApiError("Asset code prefix is required")
+        if k == "DefaultCurrency" and not one(con, "SELECT 1 x FROM tbl_Currencies WHERE CurrencyCode=? AND IsActive=1", (v,)):
+            raise ApiError("Choose a currency from the list")
+        if k == "VATRate":
+            try:
+                ok = 0 <= float(v) <= 100
+            except ValueError:
+                ok = False
+            if not ok:
+                raise ApiError("VAT rate must be between 0 and 100")
+        if k in ("VATEnabled", "VATDefaultApplicable", "VATDefaultInclusive"):
+            v = "1" if v in ("1", "true", "True") else "0"
+        if k == "BackupSchedule" and v not in ("OFF", "DAILY", "WEEKLY", "MONTHLY", "QUARTERLY"):
+            raise ApiError("Invalid backup frequency")
+        if k == "BackupTime" and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):
+            raise ApiError("Backup time must be HH:MM")
+        if k == "BackupWeekday" and v not in [str(i) for i in range(7)]:
+            raise ApiError("Invalid weekday")
+        if k == "BackupDayOfMonth" and not (v.isdigit() and 1 <= int(v) <= 28):
+            raise ApiError("Day of month must be 1-28")
+        if k == "BackupKeep" and not (v.isdigit() and int(v) <= 999):
+            raise ApiError("Backups to keep must be 0-999")
         con.execute("UPDATE tbl_Settings SET SettingValue=? WHERE SettingKey=?", (v, k))
     audit(con, "UPDATE", "tbl_Settings", "-", ", ".join(data))
     con.commit()
@@ -203,6 +239,7 @@ def lookups(con) -> dict:
         "costcenters": master_list(con, "costcenters"),
         "glaccounts": master_list(con, "glaccounts"),
         "methods": master_list(con, "methods"),
+        "currencies": master_list(con, "currencies"),
         "suppliers": rows(con, "SELECT SupplierID,SupplierCode,SupplierName,SupplierNameAr,IsActive FROM tbl_Suppliers ORDER BY SupplierName", raw=True),
         "supplier_types": SUPPLIER_TYPES,
         "periods": rows(con, "SELECT * FROM tbl_DepreciationPeriods ORDER BY StartDate"),
@@ -353,7 +390,22 @@ def _clean_asset(con, data: dict, existing: dict | None) -> dict:
     v["DepreciationStartDate"] = parse_date(data.get("DepreciationStartDate"), "Depreciation start date") or v["InServiceDate"]
     if v["InServiceDate"] < v["AcquisitionDate"]:
         raise ApiError("In-service date cannot be before the acquisition date")
-    v["AcquisitionCost"] = num(data.get("AcquisitionCost"), "Acquisition cost", 0, 0)
+    # The books always carry the NET cost (excluding VAT); VAT only records how the asset was bought.
+    st = get_settings(con)
+    amount = num(data.get("PurchaseAmount") if data.get("PurchaseAmount") not in (None, "") else data.get("AcquisitionCost"), "Invoice amount", 0, 0)
+    truthy = (True, 1, "1", "true", "True")
+    applicable = 1 if (st.get("VATEnabled", "1") == "1" and data.get("VatApplicable") in truthy) else 0
+    rate = num(data.get("VatRate"), "VAT rate", float(st.get("VATRate") or 15), 0)
+    if rate > 100:
+        raise ApiError("VAT rate must be between 0 and 100")
+    inclusive = 1 if (applicable and data.get("VatInclusive") in truthy) else 0
+    if applicable:
+        net = round(amount / (1 + rate / 100), 2) if inclusive else round(amount, 2)
+        vat = round(amount - net, 2) if inclusive else round(net * rate / 100, 2)
+    else:
+        net, vat, rate = round(amount, 2), 0.0, None
+    v["VatApplicable"], v["VatInclusive"], v["VatRate"], v["PurchaseAmount"], v["VatAmount"] = applicable, inclusive, rate, round(amount, 2), vat
+    v["AcquisitionCost"] = net
     v["ResidualValue"] = num(data.get("ResidualValue"), "Residual value", 0, 0)
     if v["ResidualValue"] > v["AcquisitionCost"]:
         raise ApiError("Residual value cannot exceed the acquisition cost")
@@ -1106,7 +1158,7 @@ def delete_supplier(con, sid: int) -> dict:
 
 
 # ---------------------------------------------------------------- backup
-BACKUP_RE = re.compile(r"^GooyaAsset_backup_\d{4}-\d{2}-\d{2}_\d{6}\.zip$")
+BACKUP_RE = re.compile(r"^GooyaAsset_(backup|auto)_\d{4}-\d{2}-\d{2}_\d{6}\.zip$")
 
 
 def _backup_root(con) -> Path:
@@ -1116,7 +1168,7 @@ def _backup_root(con) -> Path:
     return root
 
 
-def create_backup(con) -> dict:
+def create_backup(con, auto: bool = False) -> dict:
     """Zip a consistent snapshot of the database together with every attachment file."""
     import json
     import tempfile
@@ -1124,7 +1176,7 @@ def create_backup(con) -> dict:
 
     root = _backup_root(con)
     att_root = _attach_root(con)
-    name = f"GooyaAsset_backup_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.zip"
+    name = f"GooyaAsset_{'auto' if auto else 'backup'}_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.zip"
     target = root / name
     files = 0
     with tempfile.TemporaryDirectory() as tmp:
@@ -1146,7 +1198,7 @@ def create_backup(con) -> dict:
         except Exception:
             target.unlink(missing_ok=True)
             raise
-    audit(con, "BACKUP", "backup", name, f"{files} attachment file(s)")
+    audit(con, "AUTO BACKUP" if auto else "BACKUP", "backup", name, f"{files} attachment file(s)")
     con.commit()
     return {"name": name, "size": target.stat().st_size, "attachments": files, "folder": str(root)}
 
@@ -1154,11 +1206,12 @@ def create_backup(con) -> dict:
 def list_backups(con) -> dict:
     root = _backup_root(con)
     items = []
-    for p in sorted(root.glob("GooyaAsset_backup_*.zip"), reverse=True):
+    for p in sorted(root.glob("GooyaAsset_*.zip"), reverse=True):
         if BACKUP_RE.match(p.name):
             st = p.stat()
-            items.append({"name": p.name, "size": st.st_size, "created": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")})
-    return {"folder": str(root), "items": items}
+            items.append({"name": p.name, "size": st.st_size, "kind": "auto" if "_auto_" in p.name else "manual",
+                          "created": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")})
+    return {"folder": str(root), "items": items, "schedule": backup_schedule(con)}
 
 
 def backup_path(con, name: str) -> Path:
@@ -1166,3 +1219,71 @@ def backup_path(con, name: str) -> Path:
     if not BACKUP_RE.match(name) or not p.is_file():
         raise ApiError("Backup not found", 404)
     return p
+
+
+# ---------------------------------------------------------------- automatic backup schedule
+def _slots(mode: str, hhmm: str, weekday: int, dom: int, around: datetime) -> list[datetime]:
+    hh, mm = int(hhmm[:2]), int(hhmm[3:5])
+    out: list[datetime] = []
+    if mode == "DAILY" or mode == "WEEKLY":
+        d = around.date().toordinal() - 400
+        for o in range(d, d + 800):
+            day = date.fromordinal(o)
+            if mode == "DAILY" or day.weekday() == weekday:
+                out.append(datetime(day.year, day.month, day.day, hh, mm))
+    elif mode in ("MONTHLY", "QUARTERLY"):
+        for y in (around.year - 1, around.year, around.year + 1):
+            for m in (range(1, 13) if mode == "MONTHLY" else (1, 4, 7, 10)):
+                day = min(dom, calendar.monthrange(y, m)[1])
+                out.append(datetime(y, m, day, hh, mm))
+    return sorted(out)
+
+
+def backup_schedule(con, at: datetime | None = None) -> dict:
+    at = at or datetime.now()
+    st = get_settings(con)
+    mode = st.get("BackupSchedule") or "OFF"
+    info = {"mode": mode, "time": st.get("BackupTime") or "02:00", "weekday": int(st.get("BackupWeekday") or 0),
+            "dom": int(st.get("BackupDayOfMonth") or 1), "keep": int(st.get("BackupKeep") or 0),
+            "last_run": st.get("BackupLastRun") or "", "last_result": st.get("BackupLastResult") or "", "next_run": "", "due_slot": ""}
+    if mode != "OFF":
+        slots = _slots(mode, info["time"], info["weekday"], info["dom"], at)
+        past = [x for x in slots if x <= at]
+        future = [x for x in slots if x > at]
+        info["due_slot"] = past[-1].strftime("%Y-%m-%d %H:%M:%S") if past else ""
+        info["next_run"] = future[0].strftime("%Y-%m-%d %H:%M") if future else ""
+    return info
+
+
+def _put_setting(con, key: str, value: str) -> None:
+    con.execute("UPDATE tbl_Settings SET SettingValue=? WHERE SettingKey=?", (value, key))
+
+
+def run_due_backup(con, at: datetime | None = None) -> dict | None:
+    """Called by the scheduler thread: takes the automatic backup when its slot has passed and it was not taken yet."""
+    at = at or datetime.now()
+    sch = backup_schedule(con, at)
+    if sch["mode"] == "OFF" or not sch["due_slot"]:
+        return None
+    if sch["last_run"] and sch["last_run"] >= sch["due_slot"]:
+        return None
+    last_try = get_settings(con).get("BackupLastAttempt") or ""
+    if last_try and (at - datetime.strptime(last_try, "%Y-%m-%d %H:%M:%S")).total_seconds() < 3600:
+        return None  # retry a failed attempt at most once an hour
+    _put_setting(con, "BackupLastAttempt", at.strftime("%Y-%m-%d %H:%M:%S"))
+    con.commit()
+    try:
+        res = create_backup(con, auto=True)
+        _put_setting(con, "BackupLastRun", now())
+        _put_setting(con, "BackupLastResult", "OK: " + res["name"])
+        if sch["keep"] > 0:
+            root = _backup_root(con)
+            autos = sorted([p for p in root.glob("GooyaAsset_auto_*.zip") if BACKUP_RE.match(p.name)], reverse=True)
+            for old in autos[sch["keep"]:]:
+                old.unlink(missing_ok=True)
+        con.commit()
+        return res
+    except Exception as e:  # noqa: BLE001
+        _put_setting(con, "BackupLastResult", f"Error: {e}")
+        con.commit()
+        return None

@@ -8,6 +8,7 @@ from .services import ApiError, get_settings, one, parse_date, r2, rows
 
 REPORTS = [
     dict(id="asset-register", group="Fixed assets", params=["as_of", "category", "location", "costcenter", "status"]),
+    dict(id="vat-purchases", group="Fixed assets", params=["from", "to", "vat"]),
     dict(id="asset-summary", group="Fixed assets", params=["as_of", "group_by"]),
     dict(id="rollforward", group="Fixed assets", params=["from", "to"]),
     dict(id="depreciation-schedule", group="Depreciation", params=["fiscal_year", "category"]),
@@ -48,6 +49,7 @@ def asset_state(con, as_of: str) -> list[dict]:
         a["AccumDep"] = r2((a["OpeningAccumDep"] or 0) + (accum.get(a["AssetID"]) or 0))
         a["Cost"] = r2(a["AcquisitionCost"])
         a["NBV"] = r2(a["Cost"] - a["AccumDep"])
+        a["VatStatus"] = "With VAT" if a.get("VatApplicable") else "No VAT"
         out.append(a)
     return out
 
@@ -62,6 +64,7 @@ def asset_register(con, p):
         data = [a for a in data if a["AssetStatus"] == p["status"]]
     return dict(columns=_cols(("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"), ("CategoryName", "Group", "text"),
                               ("LocationName", "Location", "text"), ("AcquisitionDate", "Acquired", "date"),
+                              ("VatStatus", "VAT", "text"),
                               ("Cost", "Cost", "money"), ("AccumDep", "Accum. depreciation", "money"), ("NBV", "Net book value", "money")),
                 rows=data, group_by="CategoryName", totals=["Cost", "AccumDep", "NBV"], subtitle=f"As of {d}")
 
@@ -358,7 +361,30 @@ def supplier_summary(con, p):
                 subtitle=f"{f if f > '1901' else 'Beginning'} to {t if t < '2999' else 'today'}")
 
 
-BUILDERS = {"suppliers-directory": suppliers_directory, "supplier-purchases": supplier_purchases, "supplier-summary": supplier_summary,
+def vat_purchases(con, p):
+    f, t = _mdate(p, "from", "1900-01-01"), _mdate(p, "to", "2999-12-31")
+    sql = """SELECT A.AssetCode, A.AssetName, A.AssetNameAr, A.AcquisitionDate, A.InvoiceNumber, A.SupplierName, SP.SupplierNameAr, A.VatApplicable,
+             A.VatInclusive, A.VatRate, A.PurchaseAmount, A.AcquisitionCost, A.VatAmount FROM tbl_Assets A
+             LEFT JOIN tbl_Suppliers SP ON SP.SupplierID=A.SupplierID WHERE A.AcquisitionDate BETWEEN ? AND ?"""
+    args = [f, t]
+    if p.get("vat") in ("1", "0"):
+        sql += " AND A.VatApplicable=?"
+        args.append(int(p["vat"]))
+    data = rows(con, sql + " ORDER BY A.AcquisitionDate, A.AssetCode", args)
+    for r in data:
+        r["VatStatus"] = "With VAT" if r["VatApplicable"] else "No VAT"
+        r["Basis"] = ("Inclusive" if r["VatInclusive"] else "Exclusive") if r["VatApplicable"] else ""
+        r["Gross"] = r2((r["AcquisitionCost"] or 0) + (r["VatAmount"] or 0))
+    return dict(columns=_cols(("AcquisitionDate", "Date", "date"), ("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"),
+                              ("SupplierName", "Supplier", "text"), ("InvoiceNumber", "Invoice", "text"), ("VatStatus", "VAT", "text"),
+                              ("Basis", "Invoice basis", "text"), ("VatRate", "VAT rate", "pct"), ("AcquisitionCost", "Net cost", "money"),
+                              ("VatAmount", "VAT amount", "money"), ("Gross", "Total with VAT", "money")),
+                rows=data, totals=["AcquisitionCost", "VatAmount", "Gross"],
+                subtitle=f"{f if f > '1901' else 'Beginning'} to {t if t < '2999' else 'today'}")
+
+
+BUILDERS = {"vat-purchases": vat_purchases,
+            "suppliers-directory": suppliers_directory, "supplier-purchases": supplier_purchases, "supplier-summary": supplier_summary,
             "maintenance-history": maintenance_history, "maintenance-cost": maintenance_cost, "maintenance-schedule": maintenance_schedule,
             "asset-register": asset_register, "asset-summary": asset_summary, "rollforward": rollforward,
             "depreciation-schedule": depreciation_schedule, "depreciation-journal": depreciation_journal,

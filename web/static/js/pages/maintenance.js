@@ -63,7 +63,7 @@ export async function maintenanceListPage(root, a) {
         [{ label: t("Start work"), icon: "play", onClick: sel((r) => startOrder(r, load)) }, { label: t("Complete"), icon: "check", onClick: sel((r) => completeDialog(r, L, load)) },
             { label: t("Cancel order"), icon: "x", danger: true, onClick: sel((r) => cancelOrder(r, load)) }],
         [{ label: t("Refresh"), icon: "refresh", onClick: load }, { label: t("Reports"), icon: "report", onClick: () => (location.hash = "#/reports/maintenance-history") }],
-    ]);
+    ], [t("Maintenance"), t("Work order"), t("View")]);
     clear(root);
     root.append(page({ title: t("Maintenance orders"), subtitle: t("Maintenance"), ribbon: rb.el }, grid.el).el);
     await load();
@@ -146,7 +146,7 @@ export async function maintenanceFormPage(root, a) {
             { label: t("Complete"), icon: "check", disabled: isNew || closed, onClick: () => completeDialog(m, L, again) },
             { label: t("Cancel order"), icon: "x", danger: true, disabled: isNew || closed, onClick: () => cancelOrder(m, again) }],
         [{ label: t("Back to list"), icon: "back", onClick: () => (location.hash = "#/maintenance") }],
-    ]);
+    ], [t("Maintenance"), t("Work order"), t("View")]);
     const kv = (k, val) => h("div", null, h("span", { class: "k" }, t(k)), h("span", { class: "v" }, val));
     const fb = h("div", { class: "fb" }, h("h4", null, t("Summary")), h("div", { class: "kv" }, kv("Status", m ? statusPill(m) : pill("Planned")), kv("Asset", m ? h("a", { href: `#/assets/${m.AssetID}` }, m.AssetCode) : "—"), kv("Scheduled date", fmtDate(m?.ScheduledDate) || "—"), kv("Cost", fmtMoney(m?.Cost || 0))));
     const tabs = [

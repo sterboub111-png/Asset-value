@@ -49,7 +49,7 @@ assert s.post_depreciation(con, nov) == {"posted": 2, "total": 300.0}
 expect_error(s.post_depreciation, con, nov, contains="no unposted")
 assert s.get_asset(con, a["AssetID"])["AccumDep"] == 100 and s.get_asset(con, a["AssetID"])["NBV"] == 4700
 # posted values are locked
-expect_error(s.save_asset, con, {**a, "AcquisitionCost": 5000}, a["AssetID"], contains="cannot be changed")
+expect_error(s.save_asset, con, {**a, "PurchaseAmount": 5000}, a["AssetID"], contains="cannot be changed")
 s.save_asset(con, {**a, "AssetName": "Laptop Dell"}, a["AssetID"])  # harmless edit allowed
 
 # closing a period blocks posting
@@ -150,4 +150,46 @@ assert len(reports.run_report(con, "suppliers-directory", {"sactive": "1"})["row
 expect_error(s.delete_supplier, con, sup["SupplierID"], contains="linked")
 s.save_supplier(con, {**sup, "SupplierName": "Acme Co", "IsActive": False}, sup["SupplierID"])
 assert s.get_asset(con, a3["AssetID"])["SupplierName"] == "Acme Co"
+
+# ---- VAT: books always carry the net cost
+v1 = s.save_asset(con, {"AssetName": "VAT inc", "CategoryID": cat["CategoryID"], "AcquisitionDate": "2027-04-01", "PurchaseAmount": 1150, "VatApplicable": True, "VatInclusive": True, "VatRate": 15})
+assert (v1["AcquisitionCost"], v1["VatAmount"], v1["PurchaseAmount"]) == (1000.0, 150.0, 1150.0), v1
+v2 = s.save_asset(con, {"AssetName": "VAT exc", "CategoryID": cat["CategoryID"], "AcquisitionDate": "2027-04-01", "PurchaseAmount": 1000, "VatApplicable": True, "VatInclusive": False, "VatRate": 15})
+assert (v2["AcquisitionCost"], v2["VatAmount"]) == (1000.0, 150.0)
+v3 = s.save_asset(con, {"AssetName": "No VAT", "CategoryID": cat["CategoryID"], "AcquisitionDate": "2027-04-01", "PurchaseAmount": 1000, "VatApplicable": False})
+assert (v3["AcquisitionCost"], v3["VatAmount"], v3["VatApplicable"]) == (1000.0, 0.0, 0)
+vr = reports.run_report(con, "vat-purchases", {"from": "2027-04-01", "to": "2027-04-30"})
+assert [r["VatAmount"] for r in vr["rows"]] == [150.0, 150.0, 0.0] and vr["rows"][0]["Gross"] == 1150.0
+reg2 = reports.run_report(con, "asset-register", {"as_of": "2027-04-30"})
+assert {r["AssetName"]: r["Cost"] for r in reg2["rows"] if r["AssetName"].startswith(("VAT", "No"))} == {"VAT inc": 1000.0, "VAT exc": 1000.0, "No VAT": 1000.0}
+s.save_settings(con, {"VATEnabled": "0"})
+v4 = s.save_asset(con, {"AssetName": "VAT off", "CategoryID": cat["CategoryID"], "AcquisitionDate": "2027-04-01", "PurchaseAmount": 500, "VatApplicable": True})
+assert v4["VatApplicable"] == 0 and v4["AcquisitionCost"] == 500
+s.save_settings(con, {"VATEnabled": "1"})
+expect_error(s.save_settings, con, {"VATRate": "120"}, contains="VAT rate")
+
+# ---- currency
+expect_error(s.save_settings, con, {"DefaultCurrency": "XXX"}, contains="currency")
+s.save_settings(con, {"DefaultCurrency": "USD"}); s.save_settings(con, {"DefaultCurrency": "SAR"})
+usd = s.one(con, "SELECT CurrencyID FROM tbl_Currencies WHERE CurrencyCode='SAR'", raw=True)["CurrencyID"]
+expect_error(s.master_delete, con, "currencies", usd, contains="default currency")
+expect_error(s.master_save, con, "currencies", {"CurrencyCode": "AB", "CurrencyName": "x"}, contains="3 letters")
+
+# ---- backup schedule
+from datetime import datetime as _dt
+s.save_settings(con, {"BackupSchedule": "WEEKLY", "BackupWeekday": "2", "BackupTime": "03:30", "BackupKeep": "2"})
+ref = _dt(2027, 6, 10, 12, 0)  # a Thursday
+sc = s.backup_schedule(con, ref)
+assert sc["due_slot"].startswith("2027-06-09 03:30") and sc["next_run"].startswith("2027-06-16 03:30"), sc
+s.save_settings(con, {"BackupSchedule": "QUARTERLY", "BackupDayOfMonth": "5"})
+sc = s.backup_schedule(con, ref); assert sc["due_slot"].startswith("2027-04-05") and sc["next_run"].startswith("2027-07-05"), sc
+s.save_settings(con, {"BackupSchedule": "MONTHLY", "BackupDayOfMonth": "28"}); sc = s.backup_schedule(con, _dt(2027, 2, 27, 1, 0))
+assert sc["due_slot"].startswith("2027-01-28") and sc["next_run"].startswith("2027-02-28"), sc
+s.save_settings(con, {"BackupSchedule": "DAILY", "BackupTime": "02:00"})
+import tempfile as _tf
+s.db.ROOT = Path(_tf.mkdtemp())
+r1 = s.run_due_backup(con, _dt.now().replace(hour=23, minute=59)); assert r1 and r1["name"].startswith("GooyaAsset_auto_")
+assert s.run_due_backup(con, _dt.now().replace(hour=23, minute=59)) is None  # already taken for this slot
+assert s.list_backups(con)["items"][0]["kind"] == "auto"
+s.save_settings(con, {"BackupSchedule": "OFF"}); assert s.run_due_backup(con) is None
 print("All flow tests passed")

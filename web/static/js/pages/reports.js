@@ -1,5 +1,5 @@
 import { api, lookups } from "../api.js";
-import { getLang, t } from "../i18n.js";
+import { t } from "../i18n.js";
 import { Form, nm, cellValue, clear, dialog, downloadCsv, fail, h, opts, page, ribbon, today } from "../ui.js";
 export const REPORT_INFO = {
     "asset-register": { title: "Fixed asset register", desc: "Cost, accumulated depreciation and net book value of every asset at a date." },
@@ -11,6 +11,7 @@ export const REPORT_INFO = {
     disposals: { title: "Disposals and gain / loss", desc: "Assets sold or scrapped, with net book value, proceeds and result." },
     transactions: { title: "Asset transactions", desc: "Acquisitions, transfers, status changes and disposals." },
     "fully-depreciated": { title: "Fully depreciated assets", desc: "Assets still in use whose net book value reached the residual value." },
+    "vat-purchases": { title: "VAT on asset purchases", desc: "Net cost, VAT amount and invoice basis of every purchase, to tell VAT and non-VAT assets apart." },
     "suppliers-directory": { title: "Suppliers directory", desc: "All suppliers with their contact, tax and payment details." },
     "supplier-purchases": { title: "Purchases by supplier", desc: "Assets bought from each supplier with invoice and cost." },
     "supplier-summary": { title: "Supplier spend summary", desc: "Purchases and completed maintenance cost per supplier." },
@@ -41,6 +42,7 @@ async function paramDefs(ids) {
             ] },
         fiscal_year: { name: "fiscal_year", label: "Fiscal year", type: "number", step: "1", required: true },
         type: { name: "type", label: "Transaction type", type: "select", options: ["ACQUISITION", "TRANSFER", "STATUS", "DISPOSAL"].map((s) => ({ value: s, label: t(s) })) },
+        vat: { name: "vat", label: "VAT status", type: "select", options: [{ value: "1", label: t("With VAT") }, { value: "0", label: t("No VAT") }] },
         sactive: { name: "sactive", label: "Status", type: "select", options: [{ value: "1", label: t("Active") }, { value: "0", label: t("Inactive") }] },
         stype: { name: "stype", label: "Supplier type", type: "select", options: L.supplier_types.map((s) => ({ value: s, label: t(s) })) },
         supplier: { name: "supplier", label: "Supplier", type: "select", options: L.suppliers.map((s) => ({ value: s.SupplierID, label: `${s.SupplierCode} — ${nm(s, "SupplierName")}` })) },
@@ -63,6 +65,7 @@ export async function reportPage(root, a) {
     }
     const title = t(REPORT_INFO[id]?.title || id);
     const defs = await paramDefs(meta.params);
+    const L = await lookups();
     const defaults = { as_of: today(), from: yearStart(), to: today(), fiscal_year: String(new Date().getFullYear()), group_by: "category", mgroup: "asset", days: "30" };
     const params = {};
     for (const d of defs)
@@ -107,17 +110,21 @@ export async function reportPage(root, a) {
         paper.append(h("div", { class: "msgbar err" }, e instanceof Error ? t(e.message) : String(e)));
         return;
     }
+    const lines = defs.filter((d) => params[d.name]).map((d) => {
+        const opt = d.options?.find((o) => String(o.value) === params[d.name]);
+        return { label: t(d.label), value: opt ? opt.label : params[d.name] };
+    });
     clear(paper);
-    paper.append(renderReport(res, title));
+    paper.append(renderReport(res, title, lines, L.user));
 }
 const isNum = (type) => type === "money" || type === "int" || type === "pct";
-function renderReport(r, title) {
+function renderReport(r, title, paramLines, user) {
     const cols = r.columns;
     const totalKeys = r.totals || [];
     const sum = (rows, key) => rows.reduce((s, x) => s + Number(x[key] || 0), 0);
     const tr = (cls, cells) => h("tr", { class: cls }, ...cells);
     const tbody = h("tbody");
-    const ENUM = new Set(["Status", "MaintenanceType", "Priority", "Timing", "Source", "TransactionType", "PostingStatus", "JournalType"]);
+    const ENUM = new Set(["VatStatus", "Basis", "Status", "MaintenanceType", "Priority", "Timing", "Source", "TransactionType", "PostingStatus", "JournalType"]);
     const cell = (c, row) => h("td", { class: isNum(c.type) ? "num" : "" }, ENUM.has(c.key) ? t(String(row[c.key] ?? "")) : cellValue(c, row[c.key]));
     const totalsRow = (cls, label, rows, keys) => tr(cls, cols.map((c, i) => h("td", { class: isNum(c.type) ? "num" : "" }, keys.includes(c.key) ? cellValue(c, sum(rows, c.key)) : i === 0 ? label : "")));
     if (!r.rows.length)
@@ -148,7 +155,10 @@ function renderReport(r, title) {
     if (totalKeys.length && r.rows.length)
         tbody.append(totalsRow("tot", t("Total"), r.rows, totalKeys));
     const thead = h("thead", null, tr("", cols.map((c) => h("th", { class: isNum(c.type) ? "num" : "" }, t(c.label)))));
-    return h("div", null, h("div", { class: "rh" }, h("div", null, h("h2", null, title), h("div", { class: "co" }, [r.company, r.subtitle ? t(r.subtitle.replace(/^As of /, `${t("As of")} `)) : ""].filter(Boolean).join(" — "))), h("div", { class: "meta" }, h("div", null, `${t("Currency")}: ${r.currency}`), h("div", null, `${t("Printed")}: ${r.generated}`))), h("div", { style: "overflow:auto" }, h("table", { class: "rpt" }, thead, tbody)), h("div", { class: "rpt-foot" }, h("span", null, `Gooya Asset · ${t("{0} records", r.rows.length)}`), h("span", null, getLang() === "ar" ? "" : "")));
+    const when = new Date();
+    const stamp = `${r.generated} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
+    const period = r.subtitle ? t(r.subtitle.replace(/^As of /, `${t("As of")} `)) : "";
+    return h("div", { class: "rpt-doc" }, h("div", { class: "rh" }, h("div", { class: "rh-l" }, h("div", { class: "co" }, r.company || "Gooya Asset"), h("h2", null, title), period && !paramLines.length ? h("div", { class: "period" }, period) : null, paramLines.length ? h("div", { class: "params" }, ...paramLines.map((p) => h("span", null, h("b", null, `${p.label}: `), p.value))) : null), h("div", { class: "meta" }, h("div", null, h("span", null, `${t("Printed")}: `), stamp), h("div", null, h("span", null, `${t("Printed by")}: `), user), h("div", null, h("span", null, `${t("Currency")}: `), r.currency))), h("div", { style: "overflow:auto" }, h("table", { class: "rpt" }, thead, tbody)), h("div", { class: "rpt-foot" }, h("span", null, `Gooya Asset · ${t("{0} records", r.rows.length)}`), h("span", null, title)));
 }
 function exportCsv(r, title) {
     const esc = (s) => `"${s.replace(/"/g, '""')}"`;

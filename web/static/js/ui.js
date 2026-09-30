@@ -171,7 +171,7 @@ export class Form {
             input = h("textarea", { id, rows: 3 });
         }
         else {
-            input = h("input", { id, type: d.type === "number" ? "number" : d.type === "date" ? "date" : d.type === "checkbox" ? "checkbox" : "text",
+            input = h("input", { id, type: d.type === "number" ? "number" : d.type === "date" ? "date" : d.type === "time" ? "time" : d.type === "checkbox" ? "checkbox" : "text",
                 step: d.type === "number" ? d.step || "any" : undefined, maxlength: d.maxlength });
         }
         if (d.readonly) {
@@ -259,10 +259,14 @@ export function fastTab(title, content, opts = {}) {
     tab.append(head, h("div", { class: "content" }, content));
     return tab;
 }
-export function ribbon(groups) {
-    const el = h("div", { class: "ribbon", role: "toolbar" });
+/** Dynamics-style action pane. With `titles` the button groups become tabs (Asset | Manage | View ...). */
+export function ribbon(groups, titles) {
+    const tabbed = !!titles && titles.length === groups.length && groups.length > 1;
+    const el = h("div", { class: `ribbon ${tabbed ? "tabbed" : ""}`, role: "toolbar" });
     const btns = {};
-    for (const g of groups) {
+    const strip = tabbed ? h("div", { class: "ribbon-tabs", role: "tablist" }) : null;
+    const panes = [];
+    groups.forEach((g, gi) => {
         const ge = h("div", { class: "grp" });
         for (const b of g) {
             const be = h("button", { class: `rb ${b.primary ? "primary" : ""} ${b.danger ? "danger" : ""}`, type: "button", disabled: b.disabled }, icon(b.icon), h("span", null, b.label));
@@ -271,8 +275,20 @@ export function ribbon(groups) {
                 btns[b.id] = be;
             ge.appendChild(be);
         }
-        el.appendChild(ge);
+        panes.push(ge);
+    });
+    if (tabbed && strip) {
+        const show = (i) => {
+            panes.forEach((p, k) => { p.style.display = k === i ? "flex" : "none"; });
+            [...strip.children].forEach((c, k) => { c.classList.toggle("active", k === i); c.setAttribute("aria-selected", String(k === i)); });
+        };
+        titles.forEach((title, i) => strip.appendChild(h("button", { class: "ribbon-tab", type: "button", role: "tab", onclick: () => show(i) }, title)));
+        const wrap = h("div", { class: "ribbon-wrap" }, strip, h("div", { class: "ribbon-row" }, ...panes));
+        show(0);
+        el.appendChild(wrap);
     }
+    else
+        panes.forEach((p) => el.appendChild(p));
     return { el, btns };
 }
 export function page(o, ...body) {
@@ -346,7 +362,8 @@ export class DataGrid {
     render() {
         const cols = this.cols();
         clear(this.thead);
-        this.thead.append(h("tr", null, ...cols.map((c) => {
+        const selectable = !!this.o.onOpen;
+        this.thead.append(h("tr", null, selectable ? h("th", { class: "chk", scope: "col" }) : null, ...cols.map((c) => {
             const th = h("th", { class: ["money", "int", "pct"].includes(c.type || "") ? "num" : "", style: c.width ? `min-width:${c.width}px` : undefined, scope: "col" }, t(c.label), this.sortKey === c.key ? h("span", { class: "srt" }, this.sortDir > 0 ? "▲" : "▼") : null);
             th.addEventListener("click", () => { if (this.sortKey === c.key)
                 this.sortDir *= -1;
@@ -363,13 +380,13 @@ export class DataGrid {
             this.shown = Math.min(view.length, Math.max(limit, this.shown));
         clear(this.tbody);
         if (!view.length) {
-            this.tbody.append(h("tr", null, h("td", { colspan: cols.length, class: "empty" }, t(this.o.empty || "No records to show."))));
+            this.tbody.append(h("tr", null, h("td", { colspan: cols.length + (this.o.onOpen ? 1 : 0), class: "empty" }, t(this.o.empty || "No records to show."))));
         }
         for (const r of view.slice(0, this.shown))
             this.tbody.append(this.row(r, cols));
         clear(this.tfoot);
         if (this.o.totals && view.length) {
-            this.tfoot.append(h("tr", null, ...cols.map((c, i) => h("td", { class: ["money", "int", "pct"].includes(c.type || "") ? "num" : "" }, this.o.totals.includes(c.key) ? cellValue(c, view.reduce((s, r) => s + Number(r[c.key] || 0), 0)) : i === 0 ? t("Total") : ""))));
+            this.tfoot.append(h("tr", null, this.o.onOpen ? h("td", { class: "chk" }) : null, ...cols.map((c, i) => h("td", { class: ["money", "int", "pct"].includes(c.type || "") ? "num" : "" }, this.o.totals.includes(c.key) ? cellValue(c, view.reduce((s, r) => s + Number(r[c.key] || 0), 0)) : i === 0 ? t("Total") : ""))));
         }
         clear(this.foot);
         this.foot.append(h("span", null, t("{0} records", view.length)));
@@ -379,6 +396,20 @@ export class DataGrid {
     }
     row(r, cols) {
         const tr = h("tr", { class: `${this.o.onOpen ? "clickable" : ""} ${this.sel === r ? "sel" : ""}` });
+        if (this.o.onOpen) {
+            const box = h("input", { type: "checkbox", "aria-label": t("Select row") });
+            box.checked = this.sel === r;
+            box.addEventListener("click", (e) => { e.stopPropagation(); if (this.sel === r) {
+                this.sel = null;
+                this.o.onSelect?.(null);
+                tr.classList.remove("sel");
+                box.checked = false;
+            }
+            else {
+                tr.click();
+            } });
+            tr.append(h("td", { class: "chk" }, box));
+        }
         tr.append(...cols.map((c, i) => {
             const v = r[c.key];
             let content;
@@ -400,8 +431,11 @@ export class DataGrid {
         tr.addEventListener("click", () => {
             this.sel = r;
             this.o.onSelect?.(r);
-            this.tbody.querySelectorAll("tr.sel").forEach((x) => x.classList.remove("sel"));
+            this.tbody.querySelectorAll("tr.sel").forEach((x) => { x.classList.remove("sel"); x.querySelector("input[type=checkbox]")?.removeAttribute("checked"); (x.querySelector("input[type=checkbox]") || {}).checked = false; });
             tr.classList.add("sel");
+            const cb = tr.querySelector("input[type=checkbox]");
+            if (cb)
+                cb.checked = true;
         });
         if (this.o.onOpen)
             tr.addEventListener("dblclick", () => this.o.onOpen(r));

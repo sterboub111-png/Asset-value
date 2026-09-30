@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from . import db, reports, services as s
+from . import db, reports, scheduler, services as s
 
 STATIC = db.ROOT / "web" / "static"
 HOSTS = {"127.0.0.1", "localhost", "[::1]"}
@@ -293,6 +293,7 @@ def serve(port: int = 8742, open_browser: bool = True) -> None:
     if not db.DB_PATH.exists() or not _has_data():
         if db.EXPORT_PATH.exists():
             print("First run: importing data from Access export…", db.migrate_from_access())
+    scheduler.start()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{port}/"
     print(f"Gooya Asset is running at {url}  (Ctrl+C to stop)")

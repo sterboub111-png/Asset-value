@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS tbl_Assets(
   AssetStatus TEXT NOT NULL DEFAULT 'Active',
   AcquisitionDate TEXT NOT NULL, InServiceDate TEXT, DepreciationStartDate TEXT,
   AcquisitionCost REAL NOT NULL DEFAULT 0, ResidualValue REAL NOT NULL DEFAULT 0,
+  VatApplicable INTEGER NOT NULL DEFAULT 0, VatInclusive INTEGER NOT NULL DEFAULT 0, VatRate REAL, PurchaseAmount REAL, VatAmount REAL NOT NULL DEFAULT 0,
   UsefulLifeYears REAL, DepreciationRate REAL,
   MethodID INTEGER REFERENCES tbl_DepreciationMethods(MethodID),
   OpeningAccumDep REAL NOT NULL DEFAULT 0, OpeningNBV REAL,
@@ -96,6 +97,10 @@ CREATE TABLE IF NOT EXISTS tbl_Settings(
   SettingID INTEGER PRIMARY KEY AUTOINCREMENT,
   SettingKey TEXT NOT NULL UNIQUE, SettingValue TEXT, SettingDescription TEXT,
   IsActive INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS tbl_Currencies(
+  CurrencyID INTEGER PRIMARY KEY AUTOINCREMENT,
+  CurrencyCode TEXT NOT NULL UNIQUE, CurrencyName TEXT NOT NULL, CurrencyNameAr TEXT, Symbol TEXT,
+  IsActive INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS tbl_Suppliers(
   SupplierID INTEGER PRIMARY KEY AUTOINCREMENT,
   SupplierCode TEXT NOT NULL UNIQUE,
@@ -139,6 +144,19 @@ DEFAULT_SETTINGS = [
     ("AttachmentFolder", "", "Root folder for asset attachments"),
     ("DisposalClearingAccountID", "", "GL account that receives disposal proceeds"),
     ("BackupFolder", "", "Folder where backups are written"),
+    ("VATEnabled", "1", "Track value added tax on purchases"),
+    ("VATRate", "15", "Standard VAT rate (%)"),
+    ("VATDefaultApplicable", "1", "New assets are purchased with VAT by default"),
+    ("VATDefaultInclusive", "0", "Invoice amounts include VAT by default"),
+    ("VATNumber", "", "Company VAT registration number"),
+    ("BackupSchedule", "OFF", "Automatic backup frequency: OFF, DAILY, WEEKLY, MONTHLY, QUARTERLY"),
+    ("BackupTime", "02:00", "Automatic backup time (HH:MM)"),
+    ("BackupWeekday", "0", "Weekly backups: 0=Monday ... 6=Sunday"),
+    ("BackupDayOfMonth", "1", "Monthly / quarterly backups: day of month (1-28)"),
+    ("BackupKeep", "30", "Automatic backups to keep (0 = keep all)"),
+    ("BackupLastRun", "", "Last successful automatic backup"),
+    ("BackupLastAttempt", "", "Last automatic backup attempt"),
+    ("BackupLastResult", "", "Result of the last automatic backup"),
 ]
 
 
@@ -174,14 +192,31 @@ def _seed_arabic(con) -> None:
         con.execute("UPDATE tbl_GLAccounts SET AccountNameAr=? WHERE AccountName=? AND AccountNameAr IS NULL", (ar, en))
 
 
+CURRENCIES = [
+    ("SAR", "Saudi Riyal", "ريال سعودي", "SAR"), ("USD", "US Dollar", "دولار أمريكي", "$"), ("EUR", "Euro", "يورو", "€"),
+    ("GBP", "British Pound", "جنيه إسترليني", "£"), ("AED", "UAE Dirham", "درهم إماراتي", "AED"), ("KWD", "Kuwaiti Dinar", "دينار كويتي", "KWD"),
+    ("BHD", "Bahraini Dinar", "دينار بحريني", "BHD"), ("OMR", "Omani Rial", "ريال عماني", "OMR"), ("QAR", "Qatari Riyal", "ريال قطري", "QAR"),
+    ("EGP", "Egyptian Pound", "جنيه مصري", "EGP"), ("JOD", "Jordanian Dinar", "دينار أردني", "JOD"), ("LBP", "Lebanese Pound", "ليرة لبنانية", "LBP"),
+    ("IQD", "Iraqi Dinar", "دينار عراقي", "IQD"), ("MAD", "Moroccan Dirham", "درهم مغربي", "MAD"), ("TND", "Tunisian Dinar", "دينار تونسي", "TND"),
+    ("TRY", "Turkish Lira", "ليرة تركية", "TRY"), ("INR", "Indian Rupee", "روبية هندية", "INR"), ("PKR", "Pakistani Rupee", "روبية باكستانية", "PKR"),
+    ("CNY", "Chinese Yuan", "يوان صيني", "CNY"), ("JPY", "Japanese Yen", "ين ياباني", "JPY"), ("CHF", "Swiss Franc", "فرنك سويسري", "CHF"),
+    ("CAD", "Canadian Dollar", "دولار كندي", "CAD"), ("AUD", "Australian Dollar", "دولار أسترالي", "AUD"),
+]
+
+
 def init_db() -> None:
     con = connect()
     con.executescript(SCHEMA)
-    for table, col, ctype in [(t, c, "TEXT") for t, c in ARABIC_COLUMNS] + [("tbl_Assets", "SupplierID", "INTEGER"), ("tbl_Maintenance", "SupplierID", "INTEGER")]:
+    for table, col, ctype in [(t, c, "TEXT") for t, c in ARABIC_COLUMNS] + [("tbl_Assets", "SupplierID", "INTEGER"), ("tbl_Maintenance", "SupplierID", "INTEGER"),
+                                                 ("tbl_Assets", "VatApplicable", "INTEGER NOT NULL DEFAULT 0"), ("tbl_Assets", "VatInclusive", "INTEGER NOT NULL DEFAULT 0"),
+                                                 ("tbl_Assets", "VatRate", "REAL"), ("tbl_Assets", "PurchaseAmount", "REAL"), ("tbl_Assets", "VatAmount", "REAL NOT NULL DEFAULT 0")]:
         # upgrade databases created before these columns existed
         if col not in [r["name"] for r in con.execute(f"PRAGMA table_info({table})")]:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ctype}")
     _seed_arabic(con)
+    con.execute("UPDATE tbl_Assets SET PurchaseAmount=AcquisitionCost WHERE PurchaseAmount IS NULL")
+    for code, en, ar, sym in CURRENCIES:
+        con.execute("INSERT OR IGNORE INTO tbl_Currencies(CurrencyCode,CurrencyName,CurrencyNameAr,Symbol) VALUES(?,?,?,?)", (code, en, ar, sym))
     for key, val, desc in DEFAULT_SETTINGS:
         con.execute(
             "INSERT OR IGNORE INTO tbl_Settings(SettingKey,SettingValue,SettingDescription) VALUES(?,?,?)",
