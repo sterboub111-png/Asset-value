@@ -1,6 +1,6 @@
 # Gooya Asset — local fixed-asset register
 
-Local application (Python + HTML/CSS/TypeScript), Dynamics 365 Finance style. Data lives in `data/gooya_asset.db` (SQLite),
+Local application (Python + HTML/CSS/TypeScript),  Data lives in `data/gooya_asset.db` (SQLite),
 imported once from `Gooya asset.accdb`.
 
 **Run:** double-click `Gooya Asset.bat` (or `python run.py`) → http://127.0.0.1:8742/
