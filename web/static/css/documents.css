@@ -1,0 +1,60 @@
+/* Printable documents: handover form, report viewer, print rules. */
+@media print {
+  :root[data-theme="dark"] { --paper: #fff; --ink: #242424; --ink-2: #605e5c; --line: #e1dfdd; --blue-xl: #eff6fc; --head: #faf9f8; --bg2: #f3f2f1; }
+}
+
+/* ---- printable handover / return form (Dynamics-like document, bilingual) */
+.handover-paper { max-width: 900px; margin-inline: auto; background: #fff; color: #242424; padding: 34px 40px; }
+.handover { page: handover; font-size: 13px; line-height: 1.5; }
+.handover .bi { display: inline-flex; gap: 8px; align-items: baseline; flex-wrap: wrap; } .handover .bi .ar { color: #605e5c; direction: rtl; }
+.handover .ho-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; border-bottom: 2px solid #242424; padding-bottom: 12px; margin-bottom: 14px; }
+.handover .ho-co { font-weight: 600; font-size: 14px; } .handover h2 { margin: 4px 0 0; font-size: 22px; font-weight: 600; } .handover h2 .bi { flex-direction: column; gap: 0; }
+.handover .ho-meta { text-align: end; font-size: 12px; line-height: 1.8; } .handover .ho-meta .bi { display: inline-flex; }
+.handover h3 { margin: 16px 0 6px; font-size: 14px; border-bottom: 1px solid #c8c6c4; padding-bottom: 3px; }
+.handover .ho-tbl { width: 100%; border-collapse: collapse; } .handover .ho-tbl th { width: 34%; text-align: start; font-weight: 600; background: #faf9f8; border: 1px solid #c8c6c4; padding: 5px 8px; vertical-align: top; }
+.handover .ho-tbl td { border: 1px solid #c8c6c4; padding: 5px 8px; min-height: 26px; height: 28px; }
+.handover .ho-terms { margin-top: 16px; border: 1px solid #c8c6c4; padding: 8px 12px; font-size: 12px; } .handover .ho-terms p { margin: 4px 0; } .handover .ho-terms .ar { direction: rtl; text-align: right; }
+.handover .ho-sigs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 26px; }
+.handover .sig { font-size: 12px; } .handover .sig-title { font-weight: 600; margin-bottom: 34px; } .handover .sig-line { border-top: 1px solid #242424; margin-bottom: 6px; } .handover .sig-row { margin: 8px 0; }
+.handover .ho-foot { margin-top: 26px; font-size: 10px; color: #8a8886; text-align: center; }
+:root[data-theme="dark"] .handover-paper { background: #fff; color: #242424; }
+
+/* ---- report viewer */
+.report-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.paper { background: var(--paper); border: 1px solid var(--line); padding: 28px 36px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: auto; max-width: 100%; }
+.rpt-doc { min-width: 640px; }
+.paper .rh { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--line-2); }
+.paper .rh .co { font-size: 13px; font-weight: 600; color: var(--ink); }
+.paper .rh h2 { margin: 2px 0 4px; font-size: 22px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
+.paper .rh .period { font-size: 13px; color: var(--ink-2); }
+.paper .rh .params { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; font-size: 12px; color: var(--ink-2); }
+.paper .rh .params b { font-weight: 600; color: var(--ink); }
+.paper .rh .meta { text-align: end; font-size: 12px; color: var(--ink-2); line-height: 1.7; white-space: nowrap; }
+table.rpt { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+table.rpt th { background: var(--head); color: var(--ink); padding: 7px 8px; text-align: start; font-weight: 600; white-space: nowrap; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
+table.rpt th.num, table.rpt td.num { text-align: end; font-variant-numeric: tabular-nums; }
+table.rpt td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+table.rpt td.num.neg { color: var(--err); }
+table.rpt tr.grp td { background: transparent; font-weight: 600; color: var(--blue-t); padding-top: 12px; border-bottom: 1px solid var(--line-2); }
+table.rpt tr.sub td { font-weight: 600; background: transparent; border-top: 1px solid var(--line-2); border-bottom: 0; }
+table.rpt tr.tot td { font-weight: 700; border-top: 2px solid var(--ink); border-bottom: 3px double var(--ink); background: transparent; padding-top: 7px; padding-bottom: 7px; }
+.rpt-foot { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 11px; color: var(--ink-3); display: flex; justify-content: space-between; }
+.hub { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.hub a { display: block; background: var(--paper); border: 1px solid var(--line); padding: 12px 14px; color: var(--ink); }
+.hub a:hover { text-decoration: none; border-color: var(--blue); box-shadow: var(--shadow); } .hub a b { color: var(--blue-t); display: block; margin-bottom: 2px; } .hub a span { color: var(--ink-2); font-size: 12.5px; }
+h2.sec { font-size: 15px; margin: 18px 0 8px; font-weight: 600; } h2.sec:first-child { margin-top: 0; }
+.loading { padding: 40px; text-align: center; color: var(--ink-2); }
+
+@media print {
+  body { overflow: visible; background: #fff; } .shell { display: block; height: auto; }
+  .topbar, .nav, .page-head, .report-toolbar, .toasts, .settings-nav, .settings-bar { display: none !important; }
+  .body { display: block; } .main { overflow: visible; } .page-body { padding: 0; }
+  .paper { border: 0; box-shadow: none; padding: 0; overflow: visible; }
+  .rpt-doc { min-width: 0; }
+  table.rpt thead { display: table-header-group; } table.rpt tr { break-inside: avoid; }
+  table.rpt th, table.rpt tr.tot td, table.rpt tr.sub td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: A4 landscape; margin: 14mm 12mm 16mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; color: #605e5c; } @bottom-left { content: "Usool"; font-size: 9pt; color: #605e5c; } }
+}
+
+@page handover { size: A4 portrait; margin: 14mm 14mm 16mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; color: #605e5c; } }
+@media print { .handover-paper { padding: 0; max-width: none; margin: 0; } }

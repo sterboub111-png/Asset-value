@@ -4,14 +4,14 @@ keys = set()
 pats = [r'\bt\(' + S, r'label: ' + S, r'title: ' + S, r'hint: ' + S, r'empty: ' + S, r'crumb: ' + S,
         r'section: ' + S, r'desc: ' + S, r'reason\]? ?= ?' + S]
 for f in glob.glob('web/src/**/*.ts', recursive=True):
-    if f.endswith('ar.ts'): continue
+    if f.replace(chr(92), '/').endswith('core/ar.ts'): continue
     s = open(f, encoding='utf-8').read()
     for p in pats:
         keys.update(re.findall(p, s))
     # statuses / list literals
     for m in re.findall(r'\[((?:"[^"]+",? ?)+)\]', s):
         keys.update(re.findall(S, m))
-for f in ['app/reports.py', 'app/services.py']:
+for f in ['app/reports.py', *glob.glob('app/services/*.py')]:
     s = open(f, encoding='utf-8').read()
     keys.update(re.findall(r'\("\w+", ' + S + r', "\w+"\)', s))
     keys.update(re.findall(r'group="([^"]+)"', s))

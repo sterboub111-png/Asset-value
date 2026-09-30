@@ -11,6 +11,7 @@ def _loop() -> None:
         con = None
         try:
             con = db.connect()
+            s.set_actor("system")
             s.run_due_backup(con)
         except Exception:  # noqa: BLE001
             traceback.print_exc()

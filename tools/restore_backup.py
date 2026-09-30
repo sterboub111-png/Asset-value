@@ -1,6 +1,6 @@
-"""Restore a Gooya Asset backup.  Stop the app first.
+"""Restore a Usool backup.  Stop the app first.
 
-    python tools/restore_backup.py backups/GooyaAsset_backup_2026-10-01_101500.zip
+    python tools/restore_backup.py backups/Usool_backup_2026-10-01_101500.zip
 
 The current database is kept as data/gooya_asset.before-restore.db, attachments are extracted into the
 configured attachment folder and the stored file paths are re-pointed to it (so a backup also works on another PC).
@@ -32,7 +32,9 @@ def main(zip_path: str) -> None:
     count = 0
     for name in z.namelist():
         if name.startswith("attachments/") and not name.endswith("/"):
-            target = att_root / name[len("attachments/"):]
+            target = (att_root / name[len("attachments/"):]).resolve()
+            if att_root.resolve() not in target.parents:   # never write outside the attachment folder (zip-slip)
+                raise SystemExit(f"Unsafe path in the backup: {name}")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(z.read(name))
             count += 1

@@ -1,0 +1,46 @@
+/* Application shell: top bar, navigation pane. */
+/* ---- shell */
+.shell { display: grid; grid-template-rows: 48px 1fr; height: 100vh; }
+.topbar { background: var(--hdr); color: #fff; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+.topbar .brand { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 10px; padding: 0 10px; white-space: nowrap; }
+.topbar .brand .logo { width: 26px; height: 26px; border-radius: 4px; background: var(--blue); display: grid; place-items: center; }
+.topbar .sep { width: 1px; height: 22px; background: rgba(255,255,255,.3); margin: 0 6px; }
+.topbar .crumb { opacity: .9; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar .spacer { flex: 1; }
+.tb-btn { background: none; border: 0; color: #fff; height: 48px; min-width: 40px; padding: 0 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.tb-btn:hover { background: var(--hdr-2); }
+.tb-search { position: relative; margin-inline: 4px; }
+.tb-search input { width: 300px; max-width: 28vw; height: 30px; border: 0; border-radius: 2px; padding: 0 10px; padding-inline-start: 32px; background: rgba(255,255,255,.14); color: #fff; }
+.tb-search input::placeholder { color: rgba(255,255,255,.75); }
+.tb-search input:focus { background: var(--paper); color: var(--ink); outline: none; }
+.tb-search .ic-wrap { position: absolute; inset-inline-start: 10px; top: 0; height: 30px; display: flex; align-items: center; pointer-events: none; color: #fff; }
+.tb-search input:focus ~ .ic-wrap { color: var(--ink-2); }
+.tb-search svg.unused { position: absolute; inset-inline-start: 9px; top: 7px; color: #fff; pointer-events: none; }
+.tb-results { position: absolute; top: 34px; inset-inline-start: 0; width: 360px; background: var(--paper); color: var(--ink); box-shadow: var(--shadow); z-index: 60; max-height: 360px; overflow: auto; }
+.tb-results a { display: block; padding: 8px 12px; color: var(--ink); border-bottom: 1px solid var(--line); }
+.tb-results a:hover { background: var(--blue-xl); text-decoration: none; }
+.tb-results small { color: var(--ink-2); display: block; }
+.user-chip { width: 30px; height: 30px; border-radius: 50%; background: var(--blue); display: grid; place-items: center; font-weight: 600; font-size: 12px; }
+
+.body { display: grid; grid-template-columns: var(--nav-w) 1fr; min-height: 0; transition: grid-template-columns .2s ease; }
+body.nav-collapsed .body { grid-template-columns: 1fr; }
+.nav { background: var(--paper); border-inline-end: 1px solid var(--line); overflow: hidden auto; padding: 8px 0 24px; }
+body.nav-collapsed .nav { display: none; }
+.nav-search { position: relative; padding: 4px 12px 8px; }
+.nav-search input { width: 100%; height: 32px; border: 1px solid var(--line-2); border-radius: 2px; padding: 0 10px; padding-inline-start: 32px; background: var(--paper); }
+.nav-search input:focus { outline: none; border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
+.nav-search .ic-wrap { position: absolute; inset-inline-start: 22px; top: 4px; height: 32px; display: flex; align-items: center; color: var(--ink-3); pointer-events: none; }
+.nav-sec, .nav-grp { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; cursor: pointer; text-align: start; color: var(--ink); }
+.nav-sec { padding: 8px 14px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); margin-top: 6px; }
+.nav-grp { padding: 6px 16px; padding-inline-start: 36px; font-size: 13px; font-weight: 600; }
+.nav-sec:hover, .nav-grp:hover { background: var(--hover); }
+.nav-sec svg, .nav-grp svg { width: 12px; height: 12px; transition: transform .15s; color: var(--ink-3); }
+.nav-sec.open svg, .nav-grp.open svg { transform: rotate(90deg); }
+[dir=rtl] .nav-sec svg, [dir=rtl] .nav-grp svg { transform: scaleX(-1); } [dir=rtl] .nav-sec.open svg, [dir=rtl] .nav-grp.open svg { transform: rotate(90deg); }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 16px; color: var(--ink); border-inline-start: 3px solid transparent; }
+.nav-item:hover { background: var(--hover); text-decoration: none; }
+.nav-item.sub { padding-inline-start: 58px; font-size: 13px; gap: 8px; } .nav-item.sub svg { width: 14px; height: 14px; }
+.nav-item.active { background: var(--blue-xl); border-inline-start-color: var(--blue); font-weight: 600; color: var(--blue-t); }
+.nav-item svg { color: var(--ink-2); } .nav-item.active svg { color: var(--blue); }
+.nav-item span { overflow: hidden; text-overflow: ellipsis; }
+.main { overflow: auto; min-width: 0; position: relative; }

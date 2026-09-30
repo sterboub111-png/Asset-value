@@ -1,0 +1,14 @@
+/* Dark theme overrides. */
+/* ---- dark theme */
+:root[data-theme="dark"] {
+  --bg: #1b1a19; --paper: #252423; --head: #2d2c2b; --bg2: #323130; --ink: #f3f2f1; --ink-2: #c8c6c4; --ink-3: #979593;
+  --line: #3b3a39; --line-2: #605e5c; --hover: #323130; --sel: #0b3a5e; --blue-xl: #10283f; --blue-l: #0d3a5f; --blue-t: #6cb8f6; --blue-h: #2b88d8;
+  --ok: #92c353; --ok-bg: #1e3318; --warn: #ffd335; --warn-bg: #3d3208; --err: #f1707b; --err-bg: #4a1d21; --info-bg: #10283f;
+  --hdr: #001433; --hdr-2: #0a2450; --shadow: 0 6.4px 14.4px rgba(0,0,0,.5), 0 1.2px 3.6px rgba(0,0,0,.4);
+  color-scheme: dark;
+}
+:root[data-theme="dark"] .bar-row .fill2 { background: #2f5d86; }
+:root[data-theme="dark"] .toast { background: #484644; }
+:root[data-theme="dark"] .paper .rh h2, :root[data-theme="dark"] table.rpt tr.grp td { color: var(--ink); }
+:root[data-theme="dark"] .paper .rh { border-bottom-color: var(--blue); }
+:root[data-theme="dark"] table.rpt th { background: #0b2d63; }

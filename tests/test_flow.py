@@ -190,7 +190,7 @@ import tempfile as _tf
 s.db.ROOT = Path(_tf.mkdtemp())
 expect_error(s.create_backup, con, contains="backup folder")
 s.save_settings(con, {"BackupFolder": str(Path(_tf.mkdtemp()))})
-r1 = s.run_due_backup(con, _dt.now().replace(hour=23, minute=59)); assert r1 and r1["name"].startswith("GooyaAsset_auto_")
+r1 = s.run_due_backup(con, _dt.now().replace(hour=23, minute=59)); assert r1 and r1["name"].startswith("Usool_auto_")
 assert s.run_due_backup(con, _dt.now().replace(hour=23, minute=59)) is None  # already taken for this slot
 assert s.list_backups(con)["items"][0]["kind"] == "auto"
 s.save_settings(con, {"BackupSchedule": "OFF"}); assert s.run_due_backup(con) is None
