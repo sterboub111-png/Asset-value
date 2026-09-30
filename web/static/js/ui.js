@@ -47,6 +47,7 @@ const ICONS = {
     wrench: '<path d="M10.5 2.5a3.3 3.3 0 0 0-3.1 4.4L2.5 11.8a1.4 1.4 0 0 0 2 2l4.9-4.9a3.3 3.3 0 0 0 4.4-3.1l-2 1.6-1.8-.4-.4-1.8z"/>',
     truck: '<path d="M1.5 4h8v7h-8zM9.5 6.5h3l2 2V11h-5zM4.5 13a1.3 1.3 0 1 0 0-.01zM11.5 13a1.3 1.3 0 1 0 0-.01z"/>',
     db: '<ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>',
+    user: '<circle cx="8" cy="5.2" r="2.6"/><path d="M2.8 14c.4-3 2.5-4.6 5.2-4.6s4.8 1.6 5.2 4.6"/>',
     globe: '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>', back: '<path d="M9.5 3 4.5 8l5 5M4.5 8h9"/>',
     lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>', unlock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 4.8-1"/>',
     play: '<path d="M4.5 2.5v11l9-5.5z"/>', filter: '<path d="M2 3h12l-4.5 5.5V13l-3-1.5V8.5z"/>', audit: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14M5 7l1.5 1.5L9 5.5"/>',
@@ -66,7 +67,7 @@ export const fmtDate = (v) => (v ? String(v).slice(0, 10) : "");
 export const fmtPct = (v) => (v === null || v === undefined || v === "" ? "" : `${Number(v)}%`);
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const STATUS_CLASS = {
-    Active: "ok", POSTED: "ok", OPEN: "ok", Posted: "ok", Draft: "info", DRAFT: "info", Planned: "info", "In Progress": "warn", Completed: "ok", Cancelled: "", High: "err", Medium: "warn", Low: "", Overdue: "err", NEW: "info", Inactive: "", "Under Repair": "warn",
+    Active: "ok", POSTED: "ok", OPEN: "ok", Posted: "ok", Draft: "info", DRAFT: "info", Issued: "warn", Returned: "", Attached: "ok", Missing: "warn", Planned: "info", "In Progress": "warn", Completed: "ok", Cancelled: "", High: "err", Medium: "warn", Low: "", Overdue: "err", NEW: "info", Inactive: "", "Under Repair": "warn",
     Disposed: "err", CLOSED: "warn", ACQUISITION: "ok", DISPOSAL: "err", TRANSFER: "info", STATUS: "warn",
 };
 export const pill = (text, cls) => h("span", { class: `pill ${cls ?? STATUS_CLASS[text] ?? ""}` }, t(text));

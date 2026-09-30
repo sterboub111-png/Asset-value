@@ -201,4 +201,38 @@ s2 = s.save_supplier(con, {"SupplierName": "Zed Co", "SupplierCode": "ZED-01"});
 expect_error(s.save_supplier, con, {"SupplierName": "Other Co", "SupplierCode": "zed-01"}, contains="already exists")
 s2 = s.save_supplier(con, {**s2, "SupplierCode": "SUP-0002"}, s2["SupplierID"]); assert s2["SupplierCode"] == "SUP-0002"
 expect_error(s.save_supplier, con, {**s2, "SupplierCode": "SUP-0001"}, s2["SupplierID"], contains="already exists")
+
+# ---- employees and custody (handover): never touches cost, depreciation or asset reports
+emp = s.save_employee(con, {"EmployeeName": "Sara Test", "EmployeeNameAr": "سارة", "JobTitle": "Accountant", "Department": "Finance", "Mobile": "0500000001", "NationalID": "1000000001"})
+assert emp["EmployeeCode"] == "EMP-0001" and s.next_employee_code(con) == "EMP-0002"
+expect_error(s.save_employee, con, {"EmployeeName": "Dup", "NationalID": "1000000001"}, contains="ID number")
+before = reports.run_report(con, "asset-register", {"as_of": "2027-12-31"})["rows"]
+acc_before = s.get_asset(con, a3["AssetID"])["AccumDep"]
+cu = s.issue_custody(con, {"AssetID": a3["AssetID"], "EmployeeID": emp["EmployeeID"], "IssueDate": "2027-02-10", "ConditionOnIssue": "New", "Accessories": "Key x2"})
+assert cu["CustodyNo"] == "CU-0001" and cu["Status"] == "Issued"
+assert s.list_assets(con, "Desk")[0]["CustodianName"] == "Sara Test"
+assert reports.run_report(con, "asset-register", {"as_of": "2027-12-31"})["rows"] == before      # asset report unchanged
+assert s.get_asset(con, a3["AssetID"])["AccumDep"] == acc_before and s.get_asset(con, a3["AssetID"])["AssetStatus"] == "Active"
+expect_error(s.issue_custody, con, {"AssetID": a3["AssetID"], "EmployeeID": emp["EmployeeID"], "IssueDate": "2027-02-11"}, contains="already with")
+expect_error(s.issue_custody, con, {"AssetID": fa1, "EmployeeID": emp["EmployeeID"], "IssueDate": "2020-01-01"}, contains="acquisition")
+expect_error(s.dispose_asset, con, a3["AssetID"], {"TransactionDate": "2027-06-01"}, contains="custody")
+expect_error(s.delete_employee, con, emp["EmployeeID"], contains="custody records")
+expect_error(s.save_employee, con, {**emp, "IsActive": False}, emp["EmployeeID"], contains="still holds")
+import tempfile as _tf2
+s.save_settings(con, {"AttachmentFolder": str(Path(_tf2.mkdtemp()))})
+cu = s.add_custody_attachment(con, cu["CustodyID"], "signed.pdf", b"%PDF-signed", {"title": "Signed handover"})
+att = cu["attachments"][0]
+assert att["CustodyID"] == cu["CustodyID"] and att["FileName"].startswith("FUR-0001_CU-0001_2027-02-10") and att["FileName"].endswith(".pdf"), att
+expect_error(s.delete_custody, con, cu["CustodyID"], contains="without signed")
+expect_error(s.return_custody, con, cu["CustodyID"], {"ReturnDate": "2027-01-01"}, contains="before the issue")
+cu = s.return_custody(con, cu["CustodyID"], {"ReturnDate": "2027-03-01", "ConditionOnReturn": "Good"})
+assert cu["Status"] == "Returned" and s.list_assets(con, "Desk")[0]["CustodianName"] is None
+cu2 = s.issue_custody(con, {"AssetID": a3["AssetID"], "EmployeeID": emp["EmployeeID"], "IssueDate": "2027-03-05"})
+assert cu2["CustodyNo"] == "CU-0002"
+rp = reports.run_report(con, "custody-by-employee", {})
+assert [r["CustodyNo"] for r in rp["rows"]] == ["CU-0001", "CU-0002"], rp["rows"]
+assert len(reports.run_report(con, "custody-by-employee", {"cstatus": "Issued"})["rows"]) == 1
+assert reports.run_report(con, "employees-directory", {})["rows"][0]["Held"] == 1
+s.delete_custody(con, cu2["CustodyID"])
+expect_error(s.delete_asset, con, a3["AssetID"], contains="maintenance")
 print("All flow tests passed")

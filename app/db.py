@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS tbl_DepreciationJournal(
 CREATE TABLE IF NOT EXISTS tbl_AssetAttachments(
   AttachmentID INTEGER PRIMARY KEY AUTOINCREMENT,
   AssetID INTEGER NOT NULL REFERENCES tbl_Assets(AssetID),
-  DocumentTitle TEXT, DocumentType TEXT, FileName TEXT, FileExtension TEXT, FilePath TEXT,
+  CustodyID INTEGER, DocumentTitle TEXT, DocumentType TEXT, FileName TEXT, FileExtension TEXT, FilePath TEXT,
   Notes TEXT, CreatedAt TEXT, CreatedBy TEXT);
 CREATE TABLE IF NOT EXISTS tbl_Settings(
   SettingID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,6 +101,24 @@ CREATE TABLE IF NOT EXISTS tbl_Currencies(
   CurrencyID INTEGER PRIMARY KEY AUTOINCREMENT,
   CurrencyCode TEXT NOT NULL UNIQUE, CurrencyName TEXT NOT NULL, CurrencyNameAr TEXT, Symbol TEXT,
   IsActive INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS tbl_Employees(
+  EmployeeID INTEGER PRIMARY KEY AUTOINCREMENT,
+  EmployeeCode TEXT NOT NULL UNIQUE,
+  EmployeeName TEXT NOT NULL, EmployeeNameAr TEXT,
+  JobTitle TEXT, Department TEXT, Phone TEXT, Mobile TEXT, Email TEXT, NationalID TEXT, HireDate TEXT,
+  Notes TEXT, IsActive INTEGER NOT NULL DEFAULT 1,
+  CreatedAt TEXT, CreatedBy TEXT, ModifiedAt TEXT, ModifiedBy TEXT);
+CREATE TABLE IF NOT EXISTS tbl_AssetCustody(
+  CustodyID INTEGER PRIMARY KEY AUTOINCREMENT,
+  CustodyNo TEXT NOT NULL UNIQUE,
+  AssetID INTEGER NOT NULL REFERENCES tbl_Assets(AssetID),
+  EmployeeID INTEGER NOT NULL REFERENCES tbl_Employees(EmployeeID),
+  IssueDate TEXT NOT NULL, ReturnDate TEXT,
+  Status TEXT NOT NULL DEFAULT 'Issued',
+  ConditionOnIssue TEXT, ConditionOnReturn TEXT, Accessories TEXT, Notes TEXT, ReturnNotes TEXT, IssuedBy TEXT,
+  CreatedAt TEXT, CreatedBy TEXT, ModifiedAt TEXT, ModifiedBy TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_custody_active ON tbl_AssetCustody(AssetID) WHERE Status='Issued';
+CREATE INDEX IF NOT EXISTS ix_custody_emp ON tbl_AssetCustody(EmployeeID);
 CREATE TABLE IF NOT EXISTS tbl_Suppliers(
   SupplierID INTEGER PRIMARY KEY AUTOINCREMENT,
   SupplierCode TEXT NOT NULL UNIQUE,
@@ -209,7 +227,7 @@ def init_db() -> None:
     con.executescript(SCHEMA)
     for table, col, ctype in [(t, c, "TEXT") for t, c in ARABIC_COLUMNS] + [("tbl_Assets", "SupplierID", "INTEGER"), ("tbl_Maintenance", "SupplierID", "INTEGER"),
                                                  ("tbl_Assets", "VatApplicable", "INTEGER NOT NULL DEFAULT 0"), ("tbl_Assets", "VatInclusive", "INTEGER NOT NULL DEFAULT 0"),
-                                                 ("tbl_Assets", "VatRate", "REAL"), ("tbl_Assets", "PurchaseAmount", "REAL"), ("tbl_Assets", "VatAmount", "REAL NOT NULL DEFAULT 0")]:
+                                                 ("tbl_AssetAttachments", "CustodyID", "INTEGER"), ("tbl_Assets", "VatRate", "REAL"), ("tbl_Assets", "PurchaseAmount", "REAL"), ("tbl_Assets", "VatAmount", "REAL NOT NULL DEFAULT 0")]:
         # upgrade databases created before these columns existed
         if col not in [r["name"] for r in con.execute(f"PRAGMA table_info({table})")]:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ctype}")

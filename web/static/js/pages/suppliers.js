@@ -81,7 +81,7 @@ export async function suppliersListPage(root, _a) {
         [{ label: t("Refresh"), icon: "refresh", onClick: load }, { label: t("Reports"), icon: "report", onClick: () => (location.hash = "#/reports/suppliers-directory") }],
     ], [t("Suppliers"), t("View")]);
     clear(root);
-    root.append(page({ title: t("Suppliers"), subtitle: t("Suppliers"), ribbon: rb.el }, grid.el).el);
+    root.append(page({ title: t("Suppliers"), subtitle: t("Contacts"), ribbon: rb.el }, grid.el).el);
     await load();
 }
 // ================================================================ form
@@ -152,6 +152,6 @@ export async function supplierFormPage(root, a) {
             ] }).el, { summary: t("{0} orders", sup.maintenance.length) }));
     }
     clear(root);
-    root.append(page({ title: isNew ? t("New supplier") : `${sup.SupplierCode} : ${nm(sup, "SupplierName")}`, subtitle: t("Suppliers"), pills: sup ? [pill(sup.IsActive ? "Active" : "Inactive")] : [], ribbon: rb.el, factbox: fb }, ...tabs).el);
+    root.append(page({ title: isNew ? t("New supplier") : `${sup.SupplierCode} : ${nm(sup, "SupplierName")}`, subtitle: t("Contacts"), pills: sup ? [pill(sup.IsActive ? "Active" : "Inactive")] : [], ribbon: rb.el, factbox: fb }, ...tabs).el);
     void icon;
 }

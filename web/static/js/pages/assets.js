@@ -1,5 +1,6 @@
 import { api, lookups } from "../api.js";
 import { addSupplierShortcut, supplierOptions } from "./suppliers.js";
+import { custodyGrid, issueDialog } from "./custody.js";
 import { t } from "../i18n.js";
 import { DataGrid, Form, nm, clear, confirmDialog, dialog, downloadCsv, fail, fastTab, fmtDate, fmtMoney, guard, h, icon, opts, page, pill, ribbon, toast, today, } from "../ui.js";
 // ================================================================ list
@@ -11,6 +12,7 @@ export async function assetsListPage(root, _a) {
         { key: "AssetName", label: "Name", width: 180 },
         { key: "CategoryName", label: "Group" },
         { key: "AssetStatus", label: "Status", type: "status" },
+        { key: "CustodianName", label: "Held by" },
         { key: "VatApplicable", label: "VAT", render: (r) => (r.VatApplicable ? t("With VAT") : t("No VAT")) },
         { key: "AcquisitionDate", label: "Acquired", type: "date" },
         { key: "LocationName", label: "Location" },
@@ -216,6 +218,7 @@ export async function assetFormPage(root, a) {
                 }) }],
         [{ label: t("Transfer"), icon: "transfer", disabled: isNew || disposed, onClick: () => transferDialog(asset, L, () => assetFormPage(root, a)) },
             { label: t("Change status"), icon: "edit", disabled: isNew || disposed, onClick: () => statusDialog(asset, L, () => assetFormPage(root, a)) },
+            { label: t("Issue to employee"), icon: "user", disabled: isNew || disposed || !!asset?.custody?.some((c) => c.Status === "Issued"), onClick: () => void issueDialog(L, { AssetID: asset.AssetID }, (c) => (location.hash = `#/custody/${c.CustodyID}`)) },
             { label: t("Dispose"), icon: "dispose", danger: true, disabled: isNew || disposed, onClick: () => disposeDialog(asset, () => assetFormPage(root, a)) }],
         [{ label: t("New maintenance"), icon: "wrench", disabled: isNew || disposed, onClick: () => (location.hash = `#/maintenance/new?asset=${id}`) }],
         [{ label: t("Refresh"), icon: "refresh", disabled: isNew, onClick: () => assetFormPage(root, a) },
@@ -240,12 +243,13 @@ export async function assetFormPage(root, a) {
     if (!isNew) {
         tabs.push(fastTab(t("Depreciation history"), depHistory(asset), { summary: t("{0} lines", asset.depreciation.length) }));
         tabs.push(fastTab(t("Transactions"), txGrid(asset), { summary: t("{0} lines", asset.transactions.length) }));
+        tabs.push(fastTab(t("Custody"), custodyGrid(asset.custody, { showAsset: false }), { summary: t("{0} lines", asset.custody.length) }));
         tabs.push(fastTab(t("Maintenance"), maintGrid(asset), { summary: t("{0} orders", asset.maintenance.length) }));
         tabs.push(fastTab(t("Attachments"), attachmentsPanel(asset, () => assetFormPage(root, a)), { summary: t("{0} files", asset.attachments.length) }));
     }
     // ---- factbox
     const kv = (k, val, cls = "") => h("div", { class: cls }, h("span", { class: "k" }, t(k)), h("span", { class: "v" }, val));
-    const fb = h("div", null, h("div", { class: "fb" }, h("h4", null, t("Book value")), h("div", { class: "kv" }, kv("Acquisition cost", money2(asset?.AcquisitionCost ?? 0)), vatOn ? kv("VAT (not in cost)", asset?.VatApplicable ? money2(asset.VatAmount) : t("No VAT")) : null, kv("Accumulated depreciation", money2(asset?.AccumDep ?? 0)), h("hr"), kv("Net book value", money2(asset?.NBV ?? 0), "big"))), h("div", { class: "fb" }, h("h4", null, t("Status")), h("div", { class: "kv" }, kv("Status", asset ? pill(asset.AssetStatus) : pill("Draft")), kv("In service", fmtDate(asset?.InServiceDate) || "—"), kv("Attachments", asset ? asset.attachments.length : 0), kv("Last depreciation", lastPosted(asset) || "—"))));
+    const fb = h("div", null, h("div", { class: "fb" }, h("h4", null, t("Book value")), h("div", { class: "kv" }, kv("Acquisition cost", money2(asset?.AcquisitionCost ?? 0)), vatOn ? kv("VAT (not in cost)", asset?.VatApplicable ? money2(asset.VatAmount) : t("No VAT")) : null, kv("Accumulated depreciation", money2(asset?.AccumDep ?? 0)), h("hr"), kv("Net book value", money2(asset?.NBV ?? 0), "big"))), h("div", { class: "fb" }, h("h4", null, t("Status")), h("div", { class: "kv" }, kv("Status", asset ? pill(asset.AssetStatus) : pill("Draft")), kv("In service", fmtDate(asset?.InServiceDate) || "—"), kv("Held by", asset?.CustodianName || "—"), kv("Attachments", asset ? asset.attachments.length : 0), kv("Last depreciation", lastPosted(asset) || "—"))));
     const pg = page({ title: isNew ? t("New fixed asset") : `${asset.AssetCode} : ${nm(asset, "AssetName")}`, subtitle: t("Fixed assets"),
         pills: asset ? [pill(asset.AssetStatus)] : [], ribbon: rb.el, factbox: fb }, ...tabs);
     clear(root);
