@@ -1,0 +1,153 @@
+import { api, lookups } from "../api.js";
+import { getLang, t } from "../i18n.js";
+import { Form, nm, cellValue, clear, dialog, downloadCsv, fail, h, opts, page, ribbon, today } from "../ui.js";
+export const REPORT_INFO = {
+    "asset-register": { title: "Fixed asset register", desc: "Cost, accumulated depreciation and net book value of every asset at a date." },
+    "asset-summary": { title: "Fixed asset summary", desc: "Totals by group, location or cost center at a date." },
+    rollforward: { title: "Fixed asset roll-forward", desc: "Opening balance, additions, disposals, depreciation and closing balance by group." },
+    "depreciation-schedule": { title: "Depreciation schedule", desc: "Depreciation lines per asset and period for a fiscal year." },
+    "depreciation-journal": { title: "Fixed asset journal postings", desc: "Posted debit and credit lines to the ledger accounts." },
+    "gl-balances": { title: "Ledger account balances", desc: "Fixed asset postings summarised by ledger account." },
+    disposals: { title: "Disposals and gain / loss", desc: "Assets sold or scrapped, with net book value, proceeds and result." },
+    transactions: { title: "Asset transactions", desc: "Acquisitions, transfers, status changes and disposals." },
+    "fully-depreciated": { title: "Fully depreciated assets", desc: "Assets still in use whose net book value reached the residual value." },
+    "maintenance-history": { title: "Maintenance history", desc: "Every maintenance order per asset with vendor and cost." },
+    "maintenance-cost": { title: "Maintenance cost analysis", desc: "Completed maintenance cost and count by asset, group or type." },
+    "maintenance-schedule": { title: "Maintenance schedule and overdue", desc: "Open orders and recurring due dates that are overdue or coming up." },
+    "warranty-expiry": { title: "Warranty expiry", desc: "Assets whose warranty has expired or is about to." },
+};
+const yearStart = () => `${new Date().getFullYear()}-01-01`;
+export async function reportsHubPage(root, _a) {
+    const list = await api.get("/api/reports");
+    const groups = [...new Set(list.map((r) => r.group))];
+    const body = groups.map((g) => h("div", null, h("h2", { class: "sec" }, t(g)), h("div", { class: "hub" }, ...list.filter((r) => r.group === g).map((r) => h("a", { href: `#/reports/${r.id}` }, h("b", null, t(REPORT_INFO[r.id]?.title || r.id)), h("span", null, t(REPORT_INFO[r.id]?.desc || "")))))));
+    clear(root);
+    root.append(page({ title: t("Fixed asset reports"), subtitle: t("Reports") }, ...body).el);
+}
+async function paramDefs(ids) {
+    const L = await lookups();
+    const map = {
+        as_of: { name: "as_of", label: "As of date", type: "date" },
+        from: { name: "from", label: "From date", type: "date" }, to: { name: "to", label: "To date", type: "date" },
+        category: { name: "category", label: "Fixed asset group", type: "select", options: opts(L.categories, "CategoryID", (c) => nm(c, "CategoryName")) },
+        location: { name: "location", label: "Location", type: "select", options: opts(L.locations, "LocationID", (c) => nm(c, "LocationName")) },
+        costcenter: { name: "costcenter", label: "Cost center", type: "select", options: opts(L.costcenters, "CostCenterID", (c) => nm(c, "CostCenterName")) },
+        status: { name: "status", label: "Status", type: "select", options: [...L.statuses, "Disposed"].map((s) => ({ value: s, label: t(s) })) },
+        group_by: { name: "group_by", label: "Group by", type: "select", required: true, options: [
+                { value: "category", label: t("Fixed asset group") }, { value: "location", label: t("Location") }, { value: "costcenter", label: t("Cost center") }
+            ] },
+        fiscal_year: { name: "fiscal_year", label: "Fiscal year", type: "number", step: "1", required: true },
+        type: { name: "type", label: "Transaction type", type: "select", options: ["ACQUISITION", "TRANSFER", "STATUS", "DISPOSAL"].map((s) => ({ value: s, label: t(s) })) },
+        mstatus: { name: "mstatus", label: "Order status", type: "select", options: L.maint_statuses.map((s) => ({ value: s, label: t(s) })) },
+        mtype: { name: "mtype", label: "Maintenance type", type: "select", options: L.maint_types.map((s) => ({ value: s, label: t(s) })) },
+        mgroup: { name: "mgroup", label: "Group by", type: "select", required: true, options: [
+                { value: "asset", label: t("Asset") }, { value: "category", label: t("Fixed asset group") }, { value: "type", label: t("Type") }
+            ] },
+        days: { name: "days", label: "Days ahead", type: "number", step: "1" },
+    };
+    return ids.map((i) => map[i]);
+}
+export async function reportPage(root, a) {
+    const id = a.args[0];
+    const list = await api.get("/api/reports");
+    const meta = list.find((r) => r.id === id);
+    if (!meta) {
+        location.hash = "#/reports";
+        return;
+    }
+    const title = t(REPORT_INFO[id]?.title || id);
+    const defs = await paramDefs(meta.params);
+    const defaults = { as_of: today(), from: yearStart(), to: today(), fiscal_year: String(new Date().getFullYear()), group_by: "category", mgroup: "asset", days: "30" };
+    const params = {};
+    for (const d of defs)
+        params[d.name] = a.query.get(d.name) ?? (a.query.has("run") ? "" : defaults[d.name] ?? "");
+    const hasRun = a.query.has("run");
+    const run = (p) => {
+        const qs = new URLSearchParams({ run: "1", ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== "")) });
+        location.hash = `#/reports/${id}?${qs}`;
+    };
+    const askParams = () => {
+        const form = new Form(defs, params);
+        dialog(title, h("div", null, h("div", { class: "msgbar" }, t(REPORT_INFO[id]?.desc || "")), form.el), [
+            { label: t("OK"), primary: true, onClick: () => { if (!form.validate())
+                    return false; run(form.get()); } },
+            { label: t("Cancel"), onClick: () => { if (!hasRun)
+                    location.hash = "#/reports"; } },
+        ]);
+    };
+    let res = null;
+    const paper = h("div", { class: "paper" }, h("div", { class: "loading" }, t("Loading…")));
+    const rb = ribbon([
+        [{ label: t("Parameters"), icon: "filter", primary: true, onClick: askParams },
+            { label: t("Print"), icon: "print", onClick: () => window.print() },
+            { label: t("Export to Excel"), icon: "download", onClick: () => res && exportCsv(res, title) }],
+        [{ label: t("All reports"), icon: "back", onClick: () => (location.hash = "#/reports") }],
+    ]);
+    clear(root);
+    root.append(page({ title, subtitle: t("Reports"), ribbon: rb.el }, paper).el);
+    if (!hasRun) {
+        paper.innerHTML = "";
+        paper.append(h("div", { class: "empty" }, t("Set the report parameters to run it.")));
+        askParams();
+        return;
+    }
+    try {
+        const q = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v !== "")));
+        res = await api.get(`/api/reports/${id}?${q}`);
+    }
+    catch (e) {
+        fail(e);
+        paper.innerHTML = "";
+        paper.append(h("div", { class: "msgbar err" }, e instanceof Error ? t(e.message) : String(e)));
+        return;
+    }
+    clear(paper);
+    paper.append(renderReport(res, title));
+}
+const isNum = (type) => type === "money" || type === "int" || type === "pct";
+function renderReport(r, title) {
+    const cols = r.columns;
+    const totalKeys = r.totals || [];
+    const sum = (rows, key) => rows.reduce((s, x) => s + Number(x[key] || 0), 0);
+    const tr = (cls, cells) => h("tr", { class: cls }, ...cells);
+    const tbody = h("tbody");
+    const ENUM = new Set(["Status", "MaintenanceType", "Priority", "Timing", "Source", "TransactionType", "PostingStatus", "JournalType"]);
+    const cell = (c, row) => h("td", { class: isNum(c.type) ? "num" : "" }, ENUM.has(c.key) ? t(String(row[c.key] ?? "")) : cellValue(c, row[c.key]));
+    const totalsRow = (cls, label, rows, keys) => tr(cls, cols.map((c, i) => h("td", { class: isNum(c.type) ? "num" : "" }, keys.includes(c.key) ? cellValue(c, sum(rows, c.key)) : i === 0 ? label : "")));
+    if (!r.rows.length)
+        tbody.append(tr("", [h("td", { colspan: cols.length, class: "empty" }, t("No data for these parameters."))]));
+    if (r.group_by) {
+        const gk = r.group_by;
+        const order = [];
+        const map = new Map();
+        for (const row of r.rows) {
+            const k = String(row[gk] ?? "—");
+            if (!map.has(k)) {
+                map.set(k, []);
+                order.push(k);
+            }
+            map.get(k).push(row);
+        }
+        for (const k of order) {
+            const rows = map.get(k);
+            tbody.append(tr("grp", [h("td", { colspan: cols.length }, `${cols.find((c) => c.key === gk)?.label ? t(cols.find((c) => c.key === gk).label) : ""}: ${k}`)]));
+            rows.forEach((row) => tbody.append(tr("", cols.map((c) => cell(c, row)))));
+            const subKeys = r.subtotal_only || totalKeys;
+            if (subKeys.length)
+                tbody.append(totalsRow("sub", `${t("Subtotal")} ${k}`, rows, subKeys));
+        }
+    }
+    else
+        r.rows.forEach((row) => tbody.append(tr("", cols.map((c) => cell(c, row)))));
+    if (totalKeys.length && r.rows.length)
+        tbody.append(totalsRow("tot", t("Total"), r.rows, totalKeys));
+    const thead = h("thead", null, tr("", cols.map((c) => h("th", { class: isNum(c.type) ? "num" : "" }, t(c.label)))));
+    return h("div", null, h("div", { class: "rh" }, h("div", null, h("h2", null, title), h("div", { class: "co" }, [r.company, r.subtitle ? t(r.subtitle.replace(/^As of /, `${t("As of")} `)) : ""].filter(Boolean).join(" — "))), h("div", { class: "meta" }, h("div", null, `${t("Currency")}: ${r.currency}`), h("div", null, `${t("Printed")}: ${r.generated}`))), h("div", { style: "overflow:auto" }, h("table", { class: "rpt" }, thead, tbody)), h("div", { class: "rpt-foot" }, h("span", null, `Gooya Asset · ${t("{0} records", r.rows.length)}`), h("span", null, getLang() === "ar" ? "" : "")));
+}
+function exportCsv(r, title) {
+    const esc = (s) => `"${s.replace(/"/g, '""')}"`;
+    const lines = [r.columns.map((c) => esc(t(c.label))).join(",")];
+    for (const row of r.rows)
+        lines.push(r.columns.map((c) => (isNum(c.type) ? String(row[c.key] ?? "") : esc(cellValue(c, row[c.key])))).join(","));
+    downloadCsv(title.replace(/[^\w؀-ۿ-]+/g, "-"), lines.join("\r\n"));
+}
