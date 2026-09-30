@@ -6,6 +6,7 @@ import { auditPage, depreciationPage, journalPage, periodsPage, transactionsPage
 import { maintenanceFormPage, maintenanceListPage } from "./pages/maintenance.js";
 import { reportPage, reportsHubPage } from "./pages/reports.js";
 import { supplierFormPage, suppliersListPage } from "./pages/suppliers.js";
+import { runBackup } from "./pages/backup.js";
 import { settingsPage } from "./pages/settings.js";
 import { clear, fail, h, icon } from "./ui.js";
 
@@ -94,12 +95,13 @@ function buildShell(): HTMLElement {
 
   crumbEl = h("span", { class: "crumb" });
   const langBtn = h("button", { class: "tb-btn", title: t("Language"), onclick: () => { setLang(getLang() === "ar" ? "en" : "ar"); boot(); } }, icon("globe"), getLang() === "ar" ? "English" : "العربية");
+  const backupBtn = h("button", { class: "tb-btn", title: t("Backup now"), "aria-label": t("Backup now"), onclick: async () => { backupBtn.disabled = true; await runBackup(); backupBtn.disabled = false; } }, icon("db"));
   const themeBtn = h("button", { class: "tb-btn", title: t("Dark mode"), "aria-label": t("Dark mode"), onclick: () => { setTheme(getTheme() === "dark" ? "light" : "dark"); themeBtn.replaceChildren(icon(getTheme() === "dark" ? "sun" : "moon")); } }, icon(getTheme() === "dark" ? "sun" : "moon"));
   const top = h("header", { class: "topbar" },
     h("button", { class: "tb-btn", "aria-label": t("Navigation"), onclick: () => { document.body.classList.toggle("nav-collapsed"); try { localStorage.setItem("gooya.nav", document.body.classList.contains("nav-collapsed") ? "0" : "1"); } catch { /* ignore */ } } }, icon("menu")),
     h("div", { class: "brand" }, h("span", { class: "logo" }, icon("asset")), "Gooya Asset"), h("span", { class: "sep" }), crumbEl,
     h("span", { class: "spacer" }), h("div", { class: "tb-search" }, search, h("span", { class: "ic-wrap" }, icon("search")), results), langBtn,
-    themeBtn);
+    backupBtn, themeBtn);
   navEl = h("nav", { class: "nav", "aria-label": t("Navigation") });
   for (const s of NAV) {
     navEl.append(h("h6", null, t(s.section)));

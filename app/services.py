@@ -1103,3 +1103,66 @@ def delete_supplier(con, sid: int) -> dict:
     audit(con, "DELETE", "tbl_Suppliers", sid, sup["SupplierCode"])
     con.commit()
     return {"deleted": sid}
+
+
+# ---------------------------------------------------------------- backup
+BACKUP_RE = re.compile(r"^GooyaAsset_backup_\d{4}-\d{2}-\d{2}_\d{6}\.zip$")
+
+
+def _backup_root(con) -> Path:
+    folder = get_settings(con).get("BackupFolder")
+    root = Path(folder) if folder else db.ROOT / "backups"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def create_backup(con) -> dict:
+    """Zip a consistent snapshot of the database together with every attachment file."""
+    import json
+    import tempfile
+    import zipfile
+
+    root = _backup_root(con)
+    att_root = _attach_root(con)
+    name = f"GooyaAsset_backup_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.zip"
+    target = root / name
+    files = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        snap = Path(tmp) / "gooya_asset.db"
+        dest = sqlite3.connect(snap)
+        try:
+            con.backup(dest)  # online, consistent copy (safe while the app is in use)
+        finally:
+            dest.close()
+        try:
+            with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
+                z.write(snap, "gooya_asset.db")
+                for p in sorted(att_root.rglob("*")):
+                    if p.is_file():
+                        z.write(p, "attachments/" + p.relative_to(att_root).as_posix())
+                        files += 1
+                z.writestr("manifest.json", json.dumps({"created": now(), "user": USER, "attachments": files,
+                                                        "attachment_root": str(att_root), "app": "Gooya Asset"}, indent=2))
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+    audit(con, "BACKUP", "backup", name, f"{files} attachment file(s)")
+    con.commit()
+    return {"name": name, "size": target.stat().st_size, "attachments": files, "folder": str(root)}
+
+
+def list_backups(con) -> dict:
+    root = _backup_root(con)
+    items = []
+    for p in sorted(root.glob("GooyaAsset_backup_*.zip"), reverse=True):
+        if BACKUP_RE.match(p.name):
+            st = p.stat()
+            items.append({"name": p.name, "size": st.st_size, "created": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")})
+    return {"folder": str(root), "items": items}
+
+
+def backup_path(con, name: str) -> Path:
+    p = _backup_root(con) / name
+    if not BACKUP_RE.match(name) or not p.is_file():
+        raise ApiError("Backup not found", 404)
+    return p

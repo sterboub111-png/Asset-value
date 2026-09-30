@@ -112,6 +112,7 @@ export async function parametersPage(root, _a) {
         { name: "CompanyName", label: "Company name", wide: true }, { name: "DefaultCurrency", label: "Currency" },
         { name: "FiscalYearStartMonth", label: "Fiscal year start month", type: "select", required: true, options: Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: new Date(2000, i, 1).toLocaleString(t("en-US"), { month: "long" }) })) },
         { name: "DisposalClearingAccountID", label: "Disposal proceeds (clearing) account", type: "select", options: gl(L) },
+        { name: "BackupFolder", label: "Backup folder", wide: true, hint: "Leave blank to use the 'backups' folder next to the application. A cloud or network folder is recommended." },
         { name: "AttachmentFolder", label: "Attachments folder", wide: true, hint: "Leave blank to use the 'attachments' folder next to the application." },
     ], s);
     const save = guard(async () => {

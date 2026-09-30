@@ -156,6 +156,12 @@ def _su(c, i): return s.save_supplier(c.con, c.body, int(i))
 @route("DELETE", "/api/suppliers/(\\d+)")
 def _sd(c, i): return s.delete_supplier(c.con, int(i))
 
+@route("GET", "/api/backups")
+def _bl(c): return s.list_backups(c.con)
+
+@route("POST", "/api/backups")
+def _bc(c): return s.create_backup(c.con)
+
 @route("GET", "/api/journal")
 def _j(c): return s.journal(c.con, c.q("period"), c.q("type"))
 
@@ -210,6 +216,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._static(u.path)
         if u.path.startswith("/api/attachments/") and u.path.endswith("/download") and self.command == "GET":
             return self._download(u.path)
+        if u.path.startswith("/api/backups/") and u.path.endswith("/download") and self.command == "GET":
+            return self._download_backup(u.path)
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b""
         body = {}
@@ -255,6 +263,17 @@ class Handler(BaseHTTPRequestHandler):
         safe_inline = ctype in ("application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp")
         disp = "inline" if safe_inline else "attachment"
         self._send(200, data, ctype, {"Content-Disposition": f"{disp}; filename*=UTF-8''{quote(fn)}"})
+
+    def _download_backup(self, path):
+        name = unquote(path[len("/api/backups/"):-len("/download")])
+        con = db.connect()
+        try:
+            p = s.backup_path(con, name)
+        except s.ApiError as e:
+            return self._json(e.status, {"error": str(e)})
+        finally:
+            con.close()
+        self._send(200, p.read_bytes(), "application/zip", {"Content-Disposition": f"attachment; filename=\"{p.name}\""})
 
     def _static(self, path):
         rel = "index.html" if path in ("/", "") else unquote(path).lstrip("/")

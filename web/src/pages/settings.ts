@@ -1,5 +1,6 @@
 import { t } from "../i18n.js";
 import { clear, h, icon, page } from "../ui.js";
+import { backupPage } from "./backup.js";
 import { masterPage, parametersPage } from "./setup.js";
 
 type Args = { args: string[]; query: URLSearchParams };
@@ -11,6 +12,7 @@ export const SETTINGS_SECTIONS = [
   { id: "locations", label: "Locations", icon: "home" },
   { id: "costcenters", label: "Cost centers", icon: "list" },
   { id: "glaccounts", label: "Ledger accounts", icon: "journal" },
+  { id: "backup", label: "Backup", icon: "db" },
 ];
 
 /** One Settings area: a section list on the side and the chosen section on the right. */
@@ -22,6 +24,7 @@ export async function settingsPage(root: HTMLElement, a: Args): Promise<void> {
   clear(root);
   root.append(h("div", { class: "settings" }, side, content));
   if (id === "parameters") await parametersPage(content, a);
+  else if (id === "backup") await backupPage(content);
   else await masterPage(content, { args: [id], query: a.query });
   void page;
 }

@@ -138,6 +138,7 @@ DEFAULT_SETTINGS = [
     ("DepreciationStartRule", "IN_SERVICE_DATE", "Depreciation start rule"),
     ("AttachmentFolder", "", "Root folder for asset attachments"),
     ("DisposalClearingAccountID", "", "GL account that receives disposal proceeds"),
+    ("BackupFolder", "", "Folder where backups are written"),
 ]
 
 
