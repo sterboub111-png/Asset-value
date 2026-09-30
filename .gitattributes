@@ -1,0 +1,9 @@
+# Keep source files LF everywhere (the repo is edited on Windows but generated files are LF)
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.db binary
+*.zip binary
+*.pdf binary
+*.accdt binary
+*.accdb binary
