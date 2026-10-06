@@ -17,6 +17,7 @@ let mainEl: HTMLElement;
 let crumbEl: HTMLElement;
 let seq = 0;
 let shellAbort: AbortController | null = null;
+let shellReady = false;   // render() must not run before the nav and main area exist
 
 function parseHash(): { path: string; query: URLSearchParams } {
   const raw = location.hash.replace(/^#\/?/, "");
@@ -25,7 +26,7 @@ function parseHash(): { path: string; query: URLSearchParams } {
 }
 
 async function render(): Promise<void> {
-  if (!getMe() || getMe()!.MustChangePassword) return;
+  if (!shellReady || !getMe() || getMe()!.MustChangePassword) return;
   const { path, query } = parseHash();
   const my = ++seq;
   closeAllDialogs();
@@ -73,9 +74,11 @@ async function startSession(me: Me): Promise<void> {
   if (me.Theme === "light" || me.Theme === "dark") setTheme(me.Theme);
   applyLang();
   const app = document.getElementById("app")!;
+  shellReady = false;
   clear(app);
   await loadReportGroups();
   app.append(buildShell());
+  shellReady = true;
   document.body.classList.toggle("nav-collapsed", narrow());
   try { document.body.classList.toggle("nav-rail", localStorage.getItem(railKey) === "1"); } catch { /* ignore */ }
   if (me.MustChangePassword) { forcePasswordChange(boot); return; }   // nothing else may load until the password is changed
