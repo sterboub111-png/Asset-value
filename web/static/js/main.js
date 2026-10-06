@@ -15,13 +15,14 @@ let mainEl;
 let crumbEl;
 let seq = 0;
 let shellAbort = null;
+let shellReady = false; // render() must not run before the nav and main area exist
 function parseHash() {
     const raw = location.hash.replace(/^#\/?/, "");
     const [path, qs] = raw.split("?");
     return { path: path.replace(/\/$/, ""), query: new URLSearchParams(qs || "") };
 }
 async function render() {
-    if (!getMe() || getMe().MustChangePassword)
+    if (!shellReady || !getMe() || getMe().MustChangePassword)
         return;
     const { path, query } = parseHash();
     const my = ++seq;
@@ -82,9 +83,11 @@ async function startSession(me) {
         setTheme(me.Theme);
     applyLang();
     const app = document.getElementById("app");
+    shellReady = false;
     clear(app);
     await loadReportGroups();
     app.append(buildShell());
+    shellReady = true;
     document.body.classList.toggle("nav-collapsed", narrow());
     try {
         document.body.classList.toggle("nav-rail", localStorage.getItem(railKey) === "1");
