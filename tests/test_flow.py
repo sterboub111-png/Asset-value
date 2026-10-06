@@ -10,6 +10,11 @@ tmp = Path(tempfile.mkdtemp()) / "t.db"
 shutil.copy(db.DB_PATH, tmp)
 db.DB_PATH = tmp
 con = db.connect()
+# The imported Access data already has an asset and posted months; these tests build their own from a clean ledger.
+for t in ("tbl_DepreciationJournal", "tbl_Depreciation", "tbl_AssetTransactions", "tbl_Assets"):
+    con.execute(f"DELETE FROM {t}")
+con.execute("UPDATE tbl_DepreciationPeriods SET PeriodStatus='OPEN'")
+con.commit()
 
 
 def expect_error(fn, *a, contains=""):

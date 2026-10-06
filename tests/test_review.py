@@ -18,6 +18,11 @@ from app import auth, reports, server, services as s  # noqa: E402
 s.db.ROOT = tmp
 con = db.connect()
 db.init_db()
+# The imported Access data already has an asset and posted months; these tests build their own from a clean ledger.
+for t in ("tbl_DepreciationJournal", "tbl_Depreciation", "tbl_AssetTransactions", "tbl_Assets"):
+    con.execute(f"DELETE FROM {t}")
+con.execute("UPDATE tbl_DepreciationPeriods SET PeriodStatus='OPEN'")
+con.commit()
 
 
 def expect_error(fn, *a, contains="", **k):
