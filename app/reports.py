@@ -18,15 +18,16 @@ REPORTS = [
     dict(id="transactions", group="Transactions", params=["from", "to", "type"]),
     dict(id="fully-depreciated", group="Exceptions", params=["as_of"]),
     dict(id="warranty-expiry", group="Exceptions", params=["days"]),
-    dict(id="custody-by-employee", group="Contacts", params=["from", "to", "employee", "cstatus"]),
-    dict(id="employees-directory", group="Contacts", params=["sactive"]),
-    dict(id="suppliers-directory", group="Suppliers", params=["sactive", "stype"]),
-    dict(id="supplier-purchases", group="Suppliers", params=["from", "to", "supplier"]),
-    dict(id="supplier-summary", group="Suppliers", params=["from", "to"]),
-    dict(id="maintenance-history", group="Maintenance", params=["from", "to", "mstatus", "mtype", "category"]),
-    dict(id="maintenance-cost", group="Maintenance", params=["from", "to", "mgroup"]),
-    dict(id="maintenance-schedule", group="Maintenance", params=["days"]),
+    dict(id="custody-by-employee", group="Contacts", params=["from", "to", "employee", "cstatus"], perm="custody.view"),
+    dict(id="employees-directory", group="Contacts", params=["sactive"], perm="contacts.view"),
+    dict(id="suppliers-directory", group="Suppliers", params=["sactive", "stype"], perm="contacts.view"),
+    dict(id="supplier-purchases", group="Suppliers", params=["from", "to", "supplier"], perm="contacts.view"),
+    dict(id="supplier-summary", group="Suppliers", params=["from", "to"], perm="contacts.view"),
+    dict(id="maintenance-history", group="Maintenance", params=["from", "to", "mstatus", "mtype", "category"], perm="maintenance.view"),
+    dict(id="maintenance-cost", group="Maintenance", params=["from", "to", "mgroup"], perm="maintenance.view"),
+    dict(id="maintenance-schedule", group="Maintenance", params=["days"], perm="maintenance.view"),
 ]
+REPORT_PERM = {r["id"]: r.get("perm") for r in REPORTS}   # on top of reports.view: contact, custody and maintenance data keep their own permission
 
 
 def _cols(*spec):
@@ -148,12 +149,12 @@ def depreciation_schedule(con, p):
     if p.get("category"):
         sql += " AND A.CategoryID=?"; args.append(p["category"])
     data = rows(con, sql + " ORDER BY A.AssetCode, P.PeriodNumber", args)
-    return dict(columns=_cols(("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"), ("PeriodName", "Period", "text"),
+    return dict(columns=_cols(("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"), ("CategoryName", "Group", "text"), ("PeriodName", "Period", "text"),
                               ("AcquisitionCost", "Cost", "money"), ("OpeningAccumDep", "Opening accum. dep.", "money"),
                               ("PeriodDepreciation", "Depreciation", "money"), ("ClosingAccumDep", "Closing accum. dep.", "money"),
                               ("ClosingNBV", "Net book value", "money"), ("PostingStatus", "Status", "text")),
                 rows=data, group_by="AssetCode", totals=["PeriodDepreciation"], subtotal_only=["PeriodDepreciation"],
-                subtitle=f"Fiscal year {fy}")
+                order={"PeriodName": "PeriodNumber"}, subtitle=f"Fiscal year {fy}")
 
 
 def depreciation_journal(con, p):
@@ -451,6 +452,9 @@ def run_report(con, report_id: str, params: dict) -> dict:
     if not fn:
         raise ApiError("Unknown report", 404)
     res = fn(con, params)
+    # send only what the report shows (builders select whole rows: national IDs, IBANs ... must not leak)
+    keep = {c["key"] for c in res["columns"]} | ({res["group_by"]} if res.get("group_by") else set()) | set((res.get("order") or {}).values())
+    res["rows"] = [{k: r.get(k) for k in keep} for r in res["rows"]]
     res.update(id=report_id, params=params, company=get_settings(con).get("CompanyName", ""),
                currency=get_settings(con).get("DefaultCurrency", ""), generated=date.today().isoformat())
     return res

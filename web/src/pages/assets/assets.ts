@@ -20,11 +20,11 @@ export async function assetsListPage(root: HTMLElement, _a: Args): Promise<void>
     { key: "AssetName", label: "Name", width: 180 },
     { key: "CategoryName", label: "Group" },
     { key: "AssetStatus", label: "Status", type: "status" },
-    { key: "CustodianName", label: "Held by" },
-    { key: "VatApplicable", label: "VAT", render: (r) => (r.VatApplicable ? t("With VAT") : t("No VAT")) },
+    { key: "CustodianName", label: "Held by", hidden: true },
+    { key: "VatApplicable", label: "VAT", hidden: true, render: (r) => (r.VatApplicable ? t("With VAT") : t("No VAT")) },
     { key: "AcquisitionDate", label: "Acquired", type: "date" },
     { key: "LocationName", label: "Location" },
-    { key: "CostCenterName", label: "Cost center" },
+    { key: "CostCenterName", label: "Cost center", hidden: true },
     { key: "AcquisitionCost", label: "Cost", type: "money" },
     { key: "AccumDep", label: "Accum. depreciation", type: "money" },
     { key: "NBV", label: "Net book value", type: "money" },
@@ -108,7 +108,7 @@ export async function assetFormPage(root: HTMLElement, a: Args): Promise<void> {
     ];
   }
   const cost: FieldDef[] = [
-    { name: "AcquisitionDate", label: "Acquisition date", type: "date", required: true },
+    { name: "AcquisitionDate", label: "Acquisition date", type: "date", required: true, readonly: locked },
     ...(vatOn ? vatFields() : [{ name: "PurchaseAmount", label: "Acquisition cost", type: "number" as const, step: "0.01", required: true, readonly: locked, onChange: (_v: string, f: Form) => recalcVat(f) }]),
     { name: "ResidualValue", label: "Residual (salvage) value", type: "number", step: "0.01", readonly: locked },
     { name: "InServiceDate", label: "In-service date", type: "date", readonly: locked, onChange: (val, f) => { if (!f.value("DepreciationStartDate") || lastStart === f.value("DepreciationStartDate")) { f.set("DepreciationStartDate", val); lastStart = val; } } },

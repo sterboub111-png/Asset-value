@@ -1,6 +1,6 @@
 import { api } from "../../core/api.js";
 import { t } from "../../core/i18n.js";
-import { clear, fmtMoney, fmtInt, fail, h, page, pill } from "../../ui/index.js";
+import { clear, fmtDate, fmtMoney, fmtInt, fail, h, icon, page, pill } from "../../ui/index.js";
 export async function dashboardPage(root) {
     const view = h("div", { class: "loading" }, t("Loading…"));
     root.append(view);
@@ -24,7 +24,7 @@ export async function dashboardPage(root) {
     // by group bars
     const max = Math.max(1, ...d.by_category.map((c) => c.cost));
     const groups = d.by_category.length
-        ? h("div", null, h("div", { class: "legend" }, h("span", null, h("i", { style: "background:#9cc8ec" }), t("Acquisition cost")), h("span", null, h("i", { style: "background:var(--blue)" }), t("Net book value"))), ...d.by_category.map((c) => h("div", { class: "bar-row" }, h("span", { class: "name", title: c.name }, c.name), h("div", { class: "track" }, h("div", { class: "fill2", style: `width:${(c.cost / max) * 100}%` }), h("div", { class: "fill", style: `width:${(c.nbv / max) * 100}%;position:relative` })), h("span", { class: "amt" }, fmtMoney(c.nbv)))))
+        ? h("div", null, h("div", { class: "legend" }, h("span", null, h("i", { style: "background:var(--bar2)" }), t("Acquisition cost")), h("span", null, h("i", { style: "background:var(--blue)" }), t("Net book value"))), ...d.by_category.map((c) => h("div", { class: "bar-row" }, h("span", { class: "name", title: c.name }, c.name), h("div", { class: "track" }, h("div", { class: "fill2", style: `width:${(c.cost / max) * 100}%` }), h("div", { class: "fill", style: `width:${(c.nbv / max) * 100}%;position:relative` })), h("span", { class: "amt" }, fmtMoney(c.nbv)))))
         : h("div", { class: "empty" }, t("No fixed assets yet."));
     // depreciation trend (SVG columns)
     const trend = d.dep_trend;
@@ -54,22 +54,28 @@ export async function dashboardPage(root) {
         trendEl = h("div", null, svg);
     }
     // periods to process
-    const todo = h("div", { class: "mini-list" });
+    // every line is a way in: the chevron says so, and the button runs the next step
+    const go = (href, label, value) => h("a", { href, class: "todo-go" }, h("span", null, label), h("span", { class: "tv" }, value, icon("chevron")));
+    const todo = h("div", { class: "mini-list todo" });
     if (d.next_period)
-        todo.append(h("a", { href: `#/depreciation?period=${d.next_period.PeriodID}` }, h("span", null, t("Next period to depreciate")), h("b", null, d.next_period.PeriodName)));
+        todo.append(go(`#/depreciation?period=${d.next_period.PeriodID}`, t("Next period to depreciate"), h("b", null, d.next_period.PeriodName)));
     else
         todo.append(h("div", { class: "row" }, h("span", null, t("Next period to depreciate")), h("b", null, "—")));
-    todo.append(h("a", { href: "#/depreciation" }, h("span", null, t("Unposted depreciation lines")), h("b", null, fmtInt(d.draft_lines))));
+    todo.append(go("#/depreciation", t("Unposted depreciation lines"), h("b", { class: d.draft_lines ? "neg" : "" }, fmtInt(d.draft_lines))));
     if (d.current_period)
-        todo.append(h("div", { class: "row" }, h("span", null, t("Current period")), h("span", null, d.current_period.PeriodName, " ", pill(d.current_period.PeriodStatus))));
+        todo.append(go("#/periods", t("Current period"), h("span", null, d.current_period.PeriodName, " ", pill(d.current_period.PeriodStatus))));
+    if (d.next_period || d.draft_lines) {
+        const next = d.draft_lines ? t("Review and post depreciation") : t("Run depreciation for {0}", d.next_period.PeriodName);
+        todo.append(h("div", { class: "todo-cta" }, h("a", { class: "btn primary", href: d.next_period ? `#/depreciation?period=${d.next_period.PeriodID}` : "#/depreciation" }, next)));
+    }
     const warr = d.warranty.length
-        ? h("div", { class: "mini-list" }, ...d.warranty.map((w) => h("a", { href: `#/assets/${w.AssetID}` }, h("span", null, `${w.AssetCode} · ${w.AssetName}`), h("span", null, w.WarrantyExpiryDate))))
+        ? h("div", { class: "mini-list" }, ...d.warranty.map((w) => h("a", { href: `#/assets/${w.AssetID}` }, h("span", null, `${w.AssetCode} · ${w.AssetName}`), h("span", null, fmtDate(w.WarrantyExpiryDate)))))
         : h("div", { class: "empty" }, t("No warranties expiring in the next 90 days."));
     const maint = d.maint_due.length
-        ? h("div", { class: "mini-list" }, ...d.maint_due.map((m) => h("a", { href: `#/maintenance/${m.MaintenanceID}` }, h("span", null, pill(m.Status), " ", `${m.AssetCode} · ${m.Title}`), h("span", { class: m.IsOverdue ? "neg" : "" }, m.ScheduledDate))))
+        ? h("div", { class: "mini-list" }, ...d.maint_due.map((m) => h("a", { href: `#/maintenance/${m.MaintenanceID}` }, h("span", null, pill(m.Status), " ", `${m.AssetCode} · ${m.Title}`), h("span", { class: m.IsOverdue ? "neg" : "" }, fmtDate(m.ScheduledDate)))))
         : h("div", { class: "empty" }, t("No open maintenance orders."));
     const recent = d.recent.length
-        ? h("div", { class: "mini-list" }, ...d.recent.map((r) => h("a", { href: `#/assets/${r.AssetID}` }, h("span", null, pill(r.TransactionType), " ", `${r.AssetCode} · ${r.AssetName}`), h("span", null, r.TransactionDate))))
+        ? h("div", { class: "mini-list" }, ...d.recent.map((r) => h("a", { href: `#/assets/${r.AssetID}` }, h("span", null, pill(r.TransactionType), " ", `${r.AssetCode} · ${r.AssetName}`), h("span", null, fmtDate(r.TransactionDate)))))
         : h("div", { class: "empty" }, t("No transactions yet."));
     const card = (title, body, more, span = 4) => h("div", { class: `card span-${span}` }, h("h3", null, h("span", null, title), more ? h("a", { href: more[1], style: "font-size:12px;font-weight:400" }, more[0]) : null), h("div", { class: "card-body" }, body));
     const pg = page({ title: t("Fixed assets"), subtitle: t("Workspace") }, tiles, h("div", { class: "dash" }, card(t("Net book value by group"), groups, [t("Open register"), "#/reports/asset-register"], 7), card(t("Depreciation posted by period"), trendEl, [t("Schedule"), "#/reports/depreciation-schedule"], 5), card(t("To do"), todo, undefined, 4), card(t("Maintenance due"), maint, [t("All"), "#/maintenance"], 4), card(t("Warranties expiring soon"), warr, undefined, 4), card(t("Recent transactions"), recent, [t("All"), "#/transactions"], 12)));

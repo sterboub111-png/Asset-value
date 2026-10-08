@@ -50,10 +50,16 @@ def propose(con, period_id: int) -> list[dict]:
             line["reason"] = "Disposed"
         else:
             existing = one(con, "SELECT * FROM tbl_Depreciation WHERE AssetID=? AND PeriodID=?", (a["AssetID"], period_id))
+            first = one(con, "SELECT MIN(StartDate) s FROM tbl_DepreciationPeriods", raw=True)["s"]
+            # months before the first period cannot be proposed, so they must come in as opening accumulated depreciation
+            missing_opening = (not (a["OpeningAccumDep"] or 0) and first and _month_index(start) < _month_index(first)
+                               and not one(con, "SELECT 1 x FROM tbl_Depreciation WHERE AssetID=? AND PostingStatus='POSTED' LIMIT 1", (a["AssetID"],)))
             if existing and existing["PostingStatus"] == "POSTED":
                 line.update(reason="Already posted", status="POSTED", PeriodDepreciation=existing["PeriodDepreciation"],
                             OpeningAccumDep=existing["OpeningAccumDep"], ClosingAccumDep=existing["ClosingAccumDep"],
                             ClosingNBV=existing["ClosingNBV"])
+            elif missing_opening:
+                line["reason"] = "Started before the first period: enter the opening accumulated depreciation"
             else:
                 prior = _sequence_ok(con, a, p)
                 if prior:

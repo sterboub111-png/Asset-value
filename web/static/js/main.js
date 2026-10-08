@@ -21,8 +21,8 @@ function parseHash() {
     return { path: path.replace(/\/$/, ""), query: new URLSearchParams(qs || "") };
 }
 async function render() {
-    if (!getMe() || getMe().MustChangePassword)
-        return;
+    if (!getMe() || getMe().MustChangePassword || !mainEl?.isConnected)
+        return; // the shell is still being built
     const { path, query } = parseHash();
     const my = ++seq;
     closeAllDialogs();

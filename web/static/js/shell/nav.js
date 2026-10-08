@@ -17,6 +17,14 @@ function setRail(on) {
     }
     catch { /* ignore */ }
 }
+// a window that becomes narrow folds the pane away instead of letting it cover the page
+let wasNarrow = narrow();
+addEventListener("resize", () => {
+    const now = narrow();
+    if (now !== wasNarrow)
+        document.body.classList.toggle("nav-collapsed", now); // wide screens use the icon rail instead
+    wasNarrow = now;
+});
 export function toggleNav() {
     if (narrow())
         document.body.classList.toggle("nav-collapsed");
@@ -102,6 +110,8 @@ export function buildNav() {
     return nav;
 }
 export function markActive(href) {
+    if (!navEl)
+        return;
     navEl.querySelectorAll("a.nav-item").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === href));
     const active = navEl.querySelector(`a.nav-item[href="${href}"]`);
     // make sure the section (and report group) that holds the current page is visible

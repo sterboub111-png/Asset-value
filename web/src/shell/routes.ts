@@ -4,6 +4,7 @@ import { dashboardPage } from "../pages/workspace/dashboard.js";
 import { auditPage, depreciationPage, journalPage, periodsPage, transactionsPage } from "../pages/depreciation/depreciation.js";
 import { maintenanceFormPage, maintenanceListPage } from "../pages/maintenance/maintenance.js";
 import { reportPage, reportsGroupPage, reportsIndexPage } from "../pages/reports/reports.js";
+import { chartsDashboardPage } from "../pages/reports/dashboard.js";
 import { custodyFormPage, custodyListPage, handoverFormPage } from "../pages/contacts/custody.js";
 import { employeeFormPage, employeesListPage } from "../pages/contacts/employees.js";
 import { supplierFormPage, suppliersListPage } from "../pages/contacts/suppliers.js";
@@ -14,6 +15,7 @@ export interface Route { re: RegExp; fn: PageFn; nav: string; crumb: string; }
 
 export const ROUTES: Route[] = [
   { re: /^$/, fn: dashboardPage, nav: "#/", crumb: "Workspace" },
+  { re: /^charts$/, fn: chartsDashboardPage, nav: "#/charts", crumb: "Dashboard" },
   { re: /^assets$/, fn: assetsListPage, nav: "#/assets", crumb: "All fixed assets" },
   { re: /^assets\/(new|\d+)$/, fn: assetFormPage, nav: "#/assets", crumb: "Fixed asset" },
   { re: /^maintenance$/, fn: maintenanceListPage, nav: "#/maintenance", crumb: "Maintenance orders" },
@@ -40,7 +42,7 @@ export interface NavItem { label: string; icon: string; href: string; }
 export interface NavSection { id: string; section: string; items: NavItem[]; reports?: boolean; }
 
 export const NAV: NavSection[] = [
-  { id: "assets", section: "Fixed assets", items: [{ label: "Workspace", icon: "home", href: "#/" }, { label: "All fixed assets", icon: "asset", href: "#/assets" }] },
+  { id: "assets", section: "Fixed assets", items: [{ label: "Workspace", icon: "home", href: "#/" }, { label: "Dashboard", icon: "chart", href: "#/charts" }, { label: "All fixed assets", icon: "asset", href: "#/assets" }] },
   { id: "contacts", section: "Contacts", items: [
     { label: "Suppliers", icon: "truck", href: "#/suppliers" },
     { label: "Employees", icon: "user", href: "#/employees" },
@@ -64,6 +66,6 @@ export function permFor(href: string): string | null {
   if (/^#\/(depreciation|periods)/.test(href)) return "depreciation.view";
   if (/^#\/(journal|transactions)/.test(href)) return "inquiries.view";
   if (/^#\/audit/.test(href)) return "audit.view";
-  if (/^#\/reports/.test(href)) return "reports.view";
+  if (/^#\/(reports|charts)/.test(href)) return "reports.view";
   return null;
 }

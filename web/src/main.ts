@@ -25,7 +25,7 @@ function parseHash(): { path: string; query: URLSearchParams } {
 }
 
 async function render(): Promise<void> {
-  if (!getMe() || getMe()!.MustChangePassword) return;
+  if (!getMe() || getMe()!.MustChangePassword || !mainEl?.isConnected) return;   // the shell is still being built
   const { path, query } = parseHash();
   const my = ++seq;
   closeAllDialogs();

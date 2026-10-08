@@ -43,4 +43,5 @@ export interface ReportResult {
   group_by?: string;
   totals?: string[];
   subtotal_only?: string[];
+  order?: Record<string, string>;   // column -> hidden field that gives its natural order (period name -> period number)
 }

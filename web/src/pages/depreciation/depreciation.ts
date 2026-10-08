@@ -52,12 +52,20 @@ export async function depreciationPage(root: HTMLElement, a: Args): Promise<void
       const sp = periods.find((p) => p.PeriodID === suggested)!;
       info.className = "msgbar warn";
       info.append(t("Nothing to depreciate in this period."), " ", h("a", { href: `#/depreciation?period=${suggested}` }, t("Go to {0}", sp.PeriodName)));
+    } else if (open && n("POSTED") && !n("NEW") && !n("DRAFT")) {
+      // the period is done: point to the next open one
+      const next = periods.find((p) => p.StartDate > cur.StartDate && p.PeriodStatus === "OPEN");
+      info.className = "msgbar ok";
+      info.append(t("{0} is fully posted.", cur.PeriodName), " ", next ? h("a", { href: `#/depreciation?period=${next.PeriodID}` }, t("Go to {0}", next.PeriodName)) : "");
     } else info.append(open
       ? t("{0} new · {1} draft · {2} posted. Create the proposal, review it, then post.", n("NEW"), n("DRAFT"), n("POSTED"))
       : t("This period is closed. Depreciation cannot be changed."));
-    btns.run.disabled = !open || !lines.some((l) => l.eligible);
-    btns.post.disabled = !open || !lines.some((l) => l.status === "DRAFT");
-    btns.discard.disabled = !open || !lines.some((l) => l.status === "DRAFT");
+    const drafts = lines.some((l) => l.status === "DRAFT");
+    const canRun = open && lines.some((l) => l.eligible);
+    // the buttons are missing for users without the permission; only the next step is highlighted
+    if (btns.run) { btns.run.disabled = !canRun; btns.run.classList.toggle("primary", canRun && !drafts); }
+    if (btns.post) { btns.post.disabled = !open || !drafts; btns.post.classList.toggle("primary", open && drafts); }
+    if (btns.discard) btns.discard.disabled = !open || !drafts;
   };
   sel.onchange = () => { cur = periods.find((p) => String(p.PeriodID) === sel.value)!; history.replaceState(null, "", `#/depreciation?period=${cur.PeriodID}`); refresh(); };
 

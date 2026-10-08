@@ -19,7 +19,7 @@ def dispose_asset(con, asset_id: int, data: dict) -> dict:
     d = parse_date(data.get("TransactionDate"), "Disposal date", True)
     if d < a["AcquisitionDate"]:
         raise ApiError("Disposal date cannot be before the acquisition date")
-    proceeds = num(data.get("DisposalProceeds"), "Sale proceeds", 0, 0)
+    proceeds = r2(num(data.get("DisposalProceeds"), "Sale proceeds", 0, 0))   # cents only, so the journal always balances
     per = period_for_date(con, d)
     if per and per["PeriodStatus"] != "OPEN":
         raise ApiError("The period of the disposal date is closed")

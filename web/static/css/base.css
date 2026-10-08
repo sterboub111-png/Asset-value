@@ -1,11 +1,12 @@
-/* Design tokens (Microsoft Dynamics-style palette), reset and typography. */
-/* Usool - Dynamics 365 (Finance & Operations) inspired theme */
+/* Design tokens, reset and typography. */
+/* Usool - classic financial theme: warm paper, ink-slate blue, muted ledger green and red (easy on the eyes) */
 :root {
-  --hdr: #002050; --hdr-2: #0b2d63; --blue: #0078d4; --blue-d: #106ebe; --blue-l: #deecf9; --blue-xl: #eff6fc;
-  --ink: #242424; --ink-2: #605e5c; --ink-3: #8a8886; --line: #e1dfdd; --line-2: #c8c6c4;
-  --bg: #f3f2f1; --paper: #fff; --hover: #f3f2f1; --sel: #c7e0f4;
-  --ok: #107c10; --ok-bg: #dff6dd; --warn: #8a5a00; --warn-bg: #fff4ce; --err: #a4262c; --err-bg: #fde7e9; --info-bg: #deecf9;
-  --head: #faf9f8; --bg2: #f3f2f1; --blue-h: #106ebe; --blue-t: #106ebe; --nav-w: 264px; --radius: 2px; --shadow: 0 6.4px 14.4px rgba(0,0,0,.13), 0 1.2px 3.6px rgba(0,0,0,.11);
+  --hdr: #24394b; --hdr-2: #30495c; --blue: #2f5f7f; --blue-d: #284f6a; --blue-l: #d9e4eb; --blue-xl: #edf2f4;
+  --ink: #2a2c2e; --ink-2: #5b5f62; --ink-3: #8a8d8f; --line: #e4e0d7; --line-2: #ccc6b9;
+  --bg: #f4f2ec; --paper: #fffefa; --hover: #efece4; --sel: #dbe6ec;
+  --ok: #3d6e3d; --ok-bg: #e4eedf; --warn: #86600f; --warn-bg: #f7edd1; --warn-line: #d3a548; --err: #9a3232; --err-bg: #f6e2de; --info-bg: #e6edf1;
+  --head: #f2efe7; --bg2: #efece4; --blue-h: #284f6a; --blue-t: #285675; --gold: #a8874c; --bar2: #bcd0dc;
+  --nav-w: 264px; --radius: 3px; --shadow: 0 6px 16px rgba(36,57,75,.10), 0 1px 3px rgba(36,57,75,.08);
   font-family: "Segoe UI", "Segoe UI Web (West European)", -apple-system, "Noto Sans Arabic", Tahoma, sans-serif;
 }
 * { box-sizing: border-box; }

@@ -1,7 +1,8 @@
 import { api, lookups } from "../../core/api.js";
 import { t } from "../../core/i18n.js";
 import { getMe, userTitle } from "../../core/session.js";
-import { Form, nm, cellValue, csvText, clear, dialog, downloadCsv, fail, h, opts, page, ribbon, today } from "../../ui/index.js";
+import { addPin } from "./dashboard.js";
+import { Analysis, Form, nm, cellValue, csvText, clear, downloadCsv, fail, fmtDate, h, opts, page, ribbon, toast, today } from "../../ui/index.js";
 export const REPORT_INFO = {
     "asset-register": { title: "Fixed asset register", desc: "Cost, accumulated depreciation and net book value of every asset at a date." },
     "asset-summary": { title: "Fixed asset summary", desc: "Totals by group, location or cost center at a date." },
@@ -74,6 +75,21 @@ async function paramDefs(ids) {
     };
     return ids.map((i) => map[i]);
 }
+const VIEW_KEY = "usool.report.view";
+// Printing: a table still wider than the A4 landscape page after the print styles is scaled down to fit, never cut off.
+const PRINT_WIDTH = 1030; // 297 mm less 24 mm of margins, in CSS pixels
+addEventListener("beforeprint", () => {
+    const box = document.querySelector(".rp-body");
+    const table = box?.querySelector("table.an-grid, table.rpt");
+    if (!box || !table)
+        return;
+    box.classList.add("print-fit", "print-measure");
+    box.style.setProperty("--fit", "1");
+    const w = table.scrollWidth;
+    box.classList.remove("print-measure");
+    box.style.setProperty("--fit", w > PRINT_WIDTH ? String(Math.max(0.55, PRINT_WIDTH / w)) : "1");
+});
+addEventListener("afterprint", () => document.querySelector(".rp-body")?.classList.remove("print-fit"));
 export async function reportPage(root, a) {
     const id = a.args[0];
     const list = await api.get("/api/reports");
@@ -87,37 +103,80 @@ export async function reportPage(root, a) {
     const L = await lookups();
     const defaults = { as_of: today(), from: yearStart(), to: today(), fiscal_year: String(new Date().getFullYear()), group_by: "category", mgroup: "asset", days: "30" };
     const params = {};
+    // "run" marks optional fields the user left empty on purpose; required ones always fall back to their default
     for (const d of defs)
-        params[d.name] = a.query.get(d.name) ?? (a.query.has("run") ? "" : defaults[d.name] ?? "");
-    const hasRun = a.query.has("run");
-    const run = (p) => {
-        const qs = new URLSearchParams({ run: "1", ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== "")) });
-        location.hash = `#/reports/${id}?${qs}`;
+        params[d.name] = a.query.get(d.name) ?? (a.query.has("run") && !d.required ? "" : defaults[d.name] ?? "");
+    // parameters sit in a bar above the data: the report runs at once with the defaults, Apply runs it again
+    const form = new Form(defs, params, "fields rp-fields");
+    const apply = () => {
+        if (!form.validate())
+            return;
+        const qs = new URLSearchParams({ run: "1", ...Object.fromEntries(Object.entries(form.get()).map(([k, v]) => [k, String(v ?? "")]).filter(([, v]) => v !== "")) });
+        const next = `#/reports/${id}?${qs}`;
+        if (location.hash === next)
+            void reportPage(root, a);
+        else
+            location.hash = next;
     };
-    const askParams = () => {
-        const form = new Form(defs, params);
-        dialog(title, h("div", null, h("div", { class: "msgbar" }, t(REPORT_INFO[id]?.desc || "")), form.el), [
-            { label: t("OK"), primary: true, onClick: () => { if (!form.validate())
-                    return false; run(form.get()); } },
-            { label: t("Cancel"), onClick: () => { if (!hasRun)
-                    location.hash = `#/reports/g/${groupSlug(meta.group)}`; } },
-        ]);
-    };
+    form.el.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") {
+        e.preventDefault();
+        apply();
+    } });
+    const pbar = defs.length ? h("div", { class: "rp-bar" }, h("div", { class: "rp-desc" }, t(REPORT_INFO[id]?.desc || "")), form.el, h("div", { class: "rp-actions" }, h("button", { class: "btn primary", type: "button", onclick: apply }, t("Apply")), h("button", { class: "btn", type: "button", onclick: () => { if (location.hash === `#/reports/${id}`)
+            void reportPage(root, a);
+        else
+            location.hash = `#/reports/${id}`; } }, t("Reset")))) : null;
+    let mode = "analysis";
+    try {
+        if (localStorage.getItem(VIEW_KEY) === "layout")
+            mode = "layout";
+    }
+    catch { /* ignore */ }
     let res = null;
-    const paper = h("div", { class: "paper" }, h("div", { class: "loading" }, t("Loading…")));
+    let an = null;
+    const body = h("div", { class: "rp-body" }, h("div", { class: "loading" }, t("Loading…")));
+    const fileName = () => title.replace(/[^\w\u0600-\u06ff-]+/g, "-");
     const rb = ribbon([
-        [{ label: t("Parameters"), icon: "filter", primary: true, onClick: askParams },
-            { label: t("Print"), icon: "print", onClick: () => window.print() },
-            { label: t("Export to Excel"), icon: "download", onClick: () => res && exportCsv(res, title) }],
+        [{ id: "analysis", label: t("Analyze"), icon: "columns", active: mode === "analysis", onClick: () => setMode("analysis") },
+            { id: "layout", label: t("Report layout"), icon: "report", active: mode === "layout", onClick: () => setMode("layout") }],
+        [{ label: t("Print"), icon: "print", onClick: () => window.print() },
+            { label: t("Export to Excel"), icon: "download", onClick: () => { if (res)
+                    mode === "analysis" && an ? an.exportCsv(fileName()) : exportCsv(res, title); } }],
         list.filter((r) => r.group === meta.group).map((r) => ({ label: t(REPORT_INFO[r.id]?.title || r.id), icon: "report", active: r.id === id, onClick: () => (location.hash = `#/reports/${r.id}`) })),
     ]);
     clear(root);
-    root.append(page({ title, subtitle: t("Reports"), ribbon: rb.el }, paper).el);
-    if (!hasRun) {
-        paper.innerHTML = "";
-        paper.append(h("div", { class: "empty" }, t("Set the report parameters to run it.")));
-        askParams();
-        return;
+    root.append(page({ title, subtitle: t("Reports"), ribbon: rb.el }, pbar, body).el);
+    const lines = () => defs.filter((d) => params[d.name]).map((d) => {
+        const opt = d.options?.find((o) => String(o.value) === params[d.name]);
+        return { label: t(d.label), value: opt ? opt.label : d.type === "date" ? fmtDate(params[d.name]) : params[d.name] };
+    });
+    const user = userTitle(getMe()) || L.user;
+    const show = () => {
+        if (!res)
+            return;
+        clear(body);
+        if (mode === "layout") {
+            body.append(h("div", { class: "paper" }, renderReport(res, title, lines(), user)));
+            return;
+        }
+        an = new Analysis({ ...analysisOpts(res), onPin: (st, chartTitle) => {
+                // dates left at their defaults (today, start of year) stay dynamic on the dashboard
+                const keep = Object.fromEntries(Object.entries(params).filter(([k, v]) => v !== "" && v !== defaults[k]));
+                addPin({ title: chartTitle, report: id, params: keep, state: st });
+                toast(t("Pinned to the dashboard"), "ok");
+            } });
+        // on paper the analysis carries the same heading as the report layout
+        body.append(h("div", { class: "paper an-print-head" }, reportHead(res, title, lines(), user)), an.el);
+    };
+    function setMode(m) {
+        mode = m;
+        try {
+            localStorage.setItem(VIEW_KEY, m);
+        }
+        catch { /* ignore */ }
+        rb.btns.analysis?.classList.toggle("active", m === "analysis");
+        rb.btns.layout?.classList.toggle("active", m === "layout");
+        show();
     }
     try {
         const q = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v !== "")));
@@ -125,19 +184,34 @@ export async function reportPage(root, a) {
     }
     catch (e) {
         fail(e);
-        paper.innerHTML = "";
-        paper.append(h("div", { class: "msgbar err" }, e instanceof Error ? t(e.message) : String(e)));
+        clear(body);
+        body.append(h("div", { class: "msgbar err" }, e instanceof Error ? t(e.message) : String(e)));
         return;
     }
-    const lines = defs.filter((d) => params[d.name]).map((d) => {
-        const opt = d.options?.find((o) => String(o.value) === params[d.name]);
-        return { label: t(d.label), value: opt ? opt.label : params[d.name] };
-    });
-    clear(paper);
-    paper.append(renderReport(res, title, lines, userTitle(getMe()) || L.user));
+    show();
+}
+/** The analysis of a report: its columns, its grouping and totals as the starting layout (also used by the dashboard). */
+export function analysisOpts(r) {
+    const cols = r.columns.map((c) => ({ key: c.key, label: c.label, type: c.type }));
+    if (r.group_by && !cols.some((c) => c.key === r.group_by))
+        cols.push({ key: r.group_by, label: r.group_by, type: "text" });
+    const summed = new Set([...(r.totals || []), ...(r.subtotal_only || [])]);
+    const text = (k, row) => {
+        const c = cols.find((x) => x.key === k);
+        return ENUM_COLS.has(k) ? t(String(row[k] ?? "")) : c ? cellValue(c, row[k]) : String(row[k] ?? "");
+    };
+    return {
+        id: r.id, columns: cols, rows: r.rows, text, order: r.order,
+        defaults: () => ({
+            cols: r.columns.map((c) => c.key), groups: r.group_by ? [r.group_by] : [],
+            aggs: Object.fromEntries(cols.filter((c) => isNum(c.type)).map((c) => [c.key, summed.has(c.key) ? "sum" : "none"])),
+            pivotOn: false, pivot: "", filters: {}, sort: null, collapsed: [],
+        }),
+    };
 }
 /** Report sub-titles arrive as short English phrases with dates and numbers inside; translate the words around them. */
-function subtitleText(sub) {
+function subtitleText(raw) {
+    const sub = raw.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d));
     let m;
     const word = (w) => (w === "Beginning" || w === "today" ? t(w) : w);
     if ((m = sub.match(/^As of (.+)$/)))
@@ -185,7 +259,8 @@ function renderReport(r, title, paramLines, user) {
         }
         for (const k of order) {
             const rows = map.get(k);
-            tbody.append(tr("grp", [h("td", { colspan: cols.length }, `${cols.find((c) => c.key === gk)?.label ? t(cols.find((c) => c.key === gk).label) : ""}: ${k}`)]));
+            const glabel = cols.find((c) => c.key === gk)?.label; // the group field is not always a printed column (Employee, Supplier ...)
+            tbody.append(tr("grp", [h("td", { colspan: cols.length }, glabel ? `${t(glabel)}: ${k}` : k)]));
             rows.forEach((row) => tbody.append(tr("", cols.map((c) => cell(c, row)))));
             const subKeys = r.subtotal_only || totalKeys;
             if (subKeys.length)
@@ -197,10 +272,14 @@ function renderReport(r, title, paramLines, user) {
     if (totalKeys.length && r.rows.length)
         tbody.append(totalsRow("tot", t("Total"), r.rows, totalKeys));
     const thead = h("thead", null, tr("", cols.map((c) => h("th", { class: isNum(c.type) ? "num" : "" }, t(c.label)))));
+    return h("div", { class: "rpt-doc" }, reportHead(r, title, paramLines, user), h("div", { style: "overflow:auto" }, h("table", { class: "rpt" }, thead, tbody)), h("div", { class: "rpt-foot" }, h("span", null, `${t("Usool")} · ${t("{0} records", r.rows.length)}`), h("span", null, title)));
+}
+/** Company, title, parameters and the printed-on / by / currency block of a report. */
+function reportHead(r, title, paramLines, user) {
     const when = new Date();
-    const stamp = `${r.generated} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
+    const stamp = `${fmtDate(r.generated)} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
     const period = r.subtitle ? subtitleText(r.subtitle) : "";
-    return h("div", { class: "rpt-doc" }, h("div", { class: "rh" }, h("div", { class: "rh-l" }, h("div", { class: "co" }, r.company || t("Usool")), h("h2", null, title), period && !paramLines.length ? h("div", { class: "period" }, period) : null, paramLines.length ? h("div", { class: "params" }, ...paramLines.map((p) => h("span", null, h("b", null, `${p.label}: `), p.value))) : null), h("div", { class: "meta" }, h("div", null, h("span", null, `${t("Printed")}: `), stamp), h("div", null, h("span", null, `${t("Printed by")}: `), user), h("div", null, h("span", null, `${t("Currency")}: `), r.currency))), h("div", { style: "overflow:auto" }, h("table", { class: "rpt" }, thead, tbody)), h("div", { class: "rpt-foot" }, h("span", null, `${t("Usool")} · ${t("{0} records", r.rows.length)}`), h("span", null, title)));
+    return h("div", { class: "rh" }, h("div", { class: "rh-l" }, h("div", { class: "co" }, r.company || t("Usool")), h("h2", null, title), period && !paramLines.length ? h("div", { class: "period" }, period) : null, paramLines.length ? h("div", { class: "params" }, ...paramLines.map((p) => h("span", null, h("b", null, `${p.label}: `), p.value))) : null), h("div", { class: "meta" }, h("div", null, h("span", null, `${t("Printed")}: `), stamp), h("div", null, h("span", null, `${t("Printed by")}: `), user), h("div", null, h("span", null, `${t("Currency")}: `), r.currency)));
 }
 function exportCsv(r, title) {
     const lines = [r.columns.map((c) => csvText(t(c.label))).join(",")];

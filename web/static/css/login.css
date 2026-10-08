@@ -16,10 +16,10 @@
 .login-shell { position: relative; isolation: isolate; }
 .login-bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: linear-gradient(160deg, var(--bg) 0%, var(--blue-xl) 100%); }
 .login-bg i { position: absolute; width: 46vmax; height: 46vmax; border-radius: 50%; filter: blur(70px); opacity: .5; }
-.login-bg i:nth-child(1) { background: radial-gradient(circle, #6cb8f6 0%, transparent 70%); top: -18vmax; inset-inline-start: -12vmax; animation: drift 26s ease-in-out infinite alternate; }
-.login-bg i:nth-child(2) { background: radial-gradient(circle, #0078d4 0%, transparent 70%); bottom: -24vmax; inset-inline-end: -14vmax; opacity: .28; animation: drift 32s ease-in-out infinite alternate-reverse; }
-.login-bg i:nth-child(3) { background: radial-gradient(circle, #8764b8 0%, transparent 70%); top: 30vh; inset-inline-end: 22vw; width: 28vmax; height: 28vmax; opacity: .16; animation: drift 38s ease-in-out infinite alternate; }
-:root[data-theme="dark"] .login-bg { background: linear-gradient(160deg, #141312 0%, #0d2036 100%); }
+.login-bg i:nth-child(1) { background: radial-gradient(circle, #9dbdd2 0%, transparent 70%); top: -18vmax; inset-inline-start: -12vmax; animation: drift 26s ease-in-out infinite alternate; }
+.login-bg i:nth-child(2) { background: radial-gradient(circle, #2f5f7f 0%, transparent 70%); bottom: -24vmax; inset-inline-end: -14vmax; opacity: .28; animation: drift 32s ease-in-out infinite alternate-reverse; }
+.login-bg i:nth-child(3) { background: radial-gradient(circle, #a8874c 0%, transparent 70%); top: 30vh; inset-inline-end: 22vw; width: 28vmax; height: 28vmax; opacity: .16; animation: drift 38s ease-in-out infinite alternate; }
+:root[data-theme="dark"] .login-bg { background: linear-gradient(160deg, #15191c 0%, #1b2c3a 100%); }
 :root[data-theme="dark"] .login-bg i { opacity: .28; }
 @keyframes drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(7vw, 5vh) scale(1.12); } }
 .login-card { position: relative; overflow: hidden; animation: card-in .45s cubic-bezier(.2, .8, .2, 1) both; backdrop-filter: blur(2px); }
@@ -29,7 +29,7 @@
 .login-card.done { animation: card-out .3s ease-in forwards; }
 @keyframes card-out { to { opacity: 0; transform: translateY(-10px) scale(.985); } }
 .login-logo { display: flex; align-items: center; gap: 10px; }
-.login-logo .lg { width: 34px; height: 34px; border-radius: 6px; background: var(--blue); color: #fff; display: grid; place-items: center; box-shadow: 0 4px 12px rgba(0,120,212,.35); }
+.login-logo .lg { width: 34px; height: 34px; border-radius: 6px; background: var(--blue); color: #fff; display: grid; place-items: center; box-shadow: 0 4px 12px rgba(47,95,127,.3); }
 .login-logo .lg svg { width: 20px; height: 20px; stroke-width: 1.7; } .login-logo .lw { font-size: 19px; font-weight: 600; letter-spacing: -.01em; }
 .login-bar { position: absolute; top: 0; inset-inline: 0; height: 3px; overflow: hidden; opacity: 0; transition: opacity .2s; }
 .login-bar i { display: block; width: 40%; height: 100%; background: var(--blue); animation: bar 1.1s ease-in-out infinite; }

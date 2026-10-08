@@ -22,9 +22,13 @@ export class DataGrid {
   private tfoot = h("tfoot");
   private foot = h("div", { class: "grid-foot" });
   private scroll: HTMLElement;
+  private hidden: Set<string>;   // columns switched off (Col.hidden by default, then the user's choice, remembered per list)
 
   constructor(private o: GridOpts) {
     this.rows = o.rows;
+    this.hidden = new Set(o.columns.filter((c) => c.hidden).map((c) => c.key));
+    const key = o.exportName ? `usool.grid.cols.${o.exportName}` : "";
+    try { const saved = key && JSON.parse(localStorage.getItem(key) || "null"); if (saved) for (const [k, on] of Object.entries(saved)) on ? this.hidden.delete(k) : this.hidden.add(k); } catch { /* ignore */ }
     const tools = h("div", { class: "grid-tools" });
     if (o.search !== false) {
       const s = h("input", { class: "gt-input", style: "max-width:260px", type: "search", placeholder: t("Search…"), "aria-label": t("Search") });
@@ -33,13 +37,45 @@ export class DataGrid {
     }
     (o.tools || []).forEach((n) => tools.append(n));
     tools.append(h("span", { class: "spacer" }));
+    if (o.exportName && o.columns.filter((c) => c.label).length > 4) tools.append(this.columnChooser(key));
     if (o.exportName) tools.append(h("button", { class: "rb", type: "button", onclick: () => this.exportCsv() }, h("span", null, t("Export to Excel"))));
     const table = h("table", { class: "grid" }, this.thead, this.tbody, this.tfoot);
     this.scroll = h("div", { class: "grid-scroll", style: o.maxHeight ? `max-height:${o.maxHeight}` : undefined }, table);
     this.el = h("div", { class: "grid-wrap" }, tools, this.scroll, this.foot);
     this.render();
   }
-  private cols() { return this.o.columns.filter((c) => !c.hidden); }
+  private cols() { return this.o.columns.filter((c) => !this.hidden.has(c.key)); }
+  /** "Columns" button: a checklist of the columns; the choice is kept in this browser. */
+  private columnChooser(key: string): HTMLElement {
+    const pop = h("div", { class: "col-pop", role: "dialog", "aria-label": t("Columns") });
+    const btn = h("button", { class: "rb", type: "button", "aria-haspopup": "true", "aria-expanded": "false" }, h("span", null, t("Columns")));
+    const wrap = h("span", { class: "col-chooser" }, btn, pop);
+    const save = () => { try { if (key) localStorage.setItem(key, JSON.stringify(Object.fromEntries(this.o.columns.map((c) => [c.key, !this.hidden.has(c.key)])))); } catch { /* ignore */ } };
+    const fill = () => {
+      clear(pop);
+      for (const c of this.o.columns.filter((x) => x.label)) {
+        const box = h("input", { type: "checkbox" }) as HTMLInputElement;
+        box.checked = !this.hidden.has(c.key);
+        box.addEventListener("change", () => {
+          if (!box.checked && this.cols().length <= 1) { box.checked = true; return; }   // keep at least one column
+          box.checked ? this.hidden.delete(c.key) : this.hidden.add(c.key); save(); this.render();
+        });
+        pop.append(h("label", null, box, t(c.label)));
+      }
+      pop.append(h("button", { class: "btn sm", type: "button", onclick: () => {
+        this.hidden = new Set(this.o.columns.filter((c) => c.hidden).map((c) => c.key));
+        try { if (key) localStorage.removeItem(key); } catch { /* ignore */ }
+        fill(); this.render();
+      } }, t("Reset")));
+    };
+    const close = (e: Event) => { if (!wrap.contains(e.target as Node)) { wrap.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); document.removeEventListener("mousedown", close); } };
+    btn.addEventListener("click", () => {
+      const open = !wrap.classList.contains("open");
+      wrap.classList.toggle("open", open); btn.setAttribute("aria-expanded", String(open));
+      if (open) { fill(); document.addEventListener("mousedown", close); } else document.removeEventListener("mousedown", close);
+    });
+    return wrap;
+  }
   setRows(rows: Rec[]) { this.rows = rows; this.sel = null; this.o.onSelect?.(null); this.render(); }
   selected() { return this.sel; }
   private view(): Rec[] {

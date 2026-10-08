@@ -16,6 +16,13 @@ function setRail(on: boolean): void {
   document.body.classList.toggle("nav-rail", on);
   try { localStorage.setItem(railKey, on ? "1" : "0"); } catch { /* ignore */ }
 }
+// a window that becomes narrow folds the pane away instead of letting it cover the page
+let wasNarrow = narrow();
+addEventListener("resize", () => {
+  const now = narrow();
+  if (now !== wasNarrow) document.body.classList.toggle("nav-collapsed", now);   // wide screens use the icon rail instead
+  wasNarrow = now;
+});
 export function toggleNav(): void {
   if (narrow()) document.body.classList.toggle("nav-collapsed");
   else setRail(!isRail());
@@ -81,6 +88,7 @@ export function buildNav(): HTMLElement {
 }
 
 export function markActive(href: string): void {
+  if (!navEl) return;
   navEl.querySelectorAll<HTMLElement>("a.nav-item").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === href));
   const active = navEl.querySelector<HTMLElement>(`a.nav-item[href="${href}"]`);
   // make sure the section (and report group) that holds the current page is visible
