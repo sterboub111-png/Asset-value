@@ -1,6 +1,6 @@
 import { api, invalidateLookups, lookups } from "../../core/api.js";
 import { t } from "../../core/i18n.js";
-import { DataGrid, Form, clear, confirmDialog, dialog, fail, fmtMoney, guard, h, page, pill, ribbon, toast } from "../../ui/index.js";
+import { DataGrid, combo, Form, clear, confirmDialog, dialog, fail, fmtMoney, guard, h, page, pill, ribbon, toast } from "../../ui/index.js";
 // ================================================================ depreciation run
 export async function depreciationPage(root, a) {
     const L = await lookups(true);
@@ -15,7 +15,7 @@ export async function depreciationPage(root, a) {
     const suggested = (await api.get("/api/depreciation/suggest")).period_id;
     let cur = periods.find((p) => String(p.PeriodID) === want) || periods.find((p) => p.PeriodID === suggested)
         || periods.find((p) => p.PeriodStatus === "OPEN") || periods[periods.length - 1];
-    const sel = h("select", { class: "gt-input", style: "width:220px", "aria-label": t("Period") }, ...periods.map((p) => h("option", { value: p.PeriodID, selected: p.PeriodID === cur.PeriodID }, `${p.PeriodName}${p.PeriodStatus === "CLOSED" ? " 🔒" : ""}`)));
+    const sel = combo(periods.map((p) => ({ value: p.PeriodID, label: `${p.PeriodName}${p.PeriodStatus === "CLOSED" ? ` (${t("Closed")})` : ""}` })), { value: cur.PeriodID, allowEmpty: false, label: t("Period"), width: 240 });
     const info = h("div", { class: "msgbar" });
     const cols = [
         { key: "AssetCode", label: "Asset", link: (r) => `#/assets/${r.AssetID}` }, { key: "AssetName", label: "Name" }, { key: "CategoryName", label: "Group" },
@@ -166,8 +166,8 @@ export async function periodsPage(root, _a) {
 // ================================================================ inquiries
 export async function journalPage(root, a) {
     const L = await lookups(true);
-    const per = h("select", { class: "gt-input", style: "width:200px", "aria-label": t("Period") }, h("option", { value: "" }, t("All periods")), ...L.periods.map((p) => h("option", { value: p.PeriodID, selected: String(p.PeriodID) === a.query.get("period") }, p.PeriodName)));
-    const typ = h("select", { class: "gt-input", style: "width:170px", "aria-label": t("Type") }, h("option", { value: "" }, t("All types")), h("option", { value: "DEPRECIATION" }, t("Depreciation")), h("option", { value: "DISPOSAL" }, t("Disposal")));
+    const per = combo(L.periods.map((p) => ({ value: p.PeriodID, label: p.PeriodName })), { value: a.query.get("period") ?? "", placeholder: t("All periods"), label: t("Period"), width: 210 });
+    const typ = combo([{ value: "DEPRECIATION", label: t("Depreciation") }, { value: "DISPOSAL", label: t("Disposal") }], { placeholder: t("All types"), label: t("Type"), width: 170 });
     const grid = new DataGrid({ rows: [], tools: [per, typ], exportName: "fixed-asset-journal", totals: ["DebitAmount", "CreditAmount"], columns: [
             { key: "JournalDate", label: "Date", type: "date" }, { key: "JournalType", label: "Type", render: (r) => t(r.JournalType) }, { key: "PeriodName", label: "Period" },
             { key: "Reference", label: "Asset", link: (r) => (r.AssetID ? `#/assets/${r.AssetID}` : null) }, { key: "AccountCode", label: "Account" }, { key: "AccountName", label: "Account name" },
@@ -215,5 +215,28 @@ export async function auditPage(root, _a) {
     } };
     clear(root);
     root.append(page({ title: t("Audit log"), subtitle: t("Inquiries"), ribbon: ribbon([[{ label: t("Refresh"), icon: "refresh", onClick: load }]]).el }, grid.el).el);
+    await load();
+}
+// ================================================================ data checks
+/** The integrity checks of the books (services/integrity.py): each relation, whether it holds, and where it does not. */
+export async function integrityPage(root, _a) {
+    const body = h("div", { class: "ic-list" }, h("div", { class: "loading" }, t("Loading…")));
+    const load = async () => {
+        try {
+            const checks = await api.get("/api/integrity");
+            clear(body);
+            const failed = checks.filter((c) => !c.ok).length;
+            body.append(h("div", { class: `msgbar ${failed ? "err" : "ok"}` }, failed ? t("{0} data check(s) failed", failed) : t("All data checks pass: the books are consistent.")));
+            for (const c of checks) {
+                body.append(h("section", { class: `ic-check ${c.ok ? "ok" : "bad"}` }, h("div", { class: "ic-head" }, h("b", null, t(c.title)), pill(c.ok ? t("Passed") : t("{0} issue(s)", c.issues.length), c.ok ? "ok" : "err")), c.ok ? null : h("ul", null, ...c.issues.slice(0, 50).map((i) => h("li", null, i.asset ? h("a", { href: `#/assets/${i.asset}` }, i.text) : i.text)))));
+            }
+        }
+        catch (e) {
+            fail(e);
+        }
+    };
+    const rb = ribbon([[{ label: t("Run checks"), icon: "refresh", primary: true, onClick: load }]]);
+    clear(root);
+    root.append(page({ title: t("Data checks"), subtitle: t("Inquiries"), ribbon: rb.el }, h("p", { class: "ic-intro" }, t("These checks recalculate the books from the tables: depreciation lines, journals, disposals, VAT, periods and reports must all agree.")), body).el);
     await load();
 }

@@ -28,7 +28,7 @@ from .inquiries import (
     audit_log, journal, transactions,
 )
 from .dashboard import (
-    dashboard,
+    attention, dashboard, failed_checks,
 )
 from .maintenance import (
     MAINT_PRIORITIES, MAINT_SQL, MAINT_STATUSES, MAINT_TYPES, _clean_maint, _maint_flags, _next_maint_no, _release_asset, _set_asset_status, _vendor, delete_maintenance, get_maintenance, list_maintenance, maintenance_action, save_maintenance,
@@ -41,6 +41,9 @@ from .backup import (
 )
 from .employees import (
     EMPLOYEE_FIELDS, EMPLOYEE_LIST_SQL, delete_employee, get_employee, list_employees, next_employee_code, save_employee,
+)
+from .integrity import (
+    run_checks,
 )
 from .custody import (
     CUSTODY_SQL, _next_custody_no, add_custody_attachment, delete_custody, get_custody, issue_custody, list_custody, return_custody, update_custody,
@@ -104,7 +107,9 @@ __all__ = [
     "audit_log",
     "journal",
     "transactions",
+    "attention",
     "dashboard",
+    "failed_checks",
     "MAINT_PRIORITIES",
     "MAINT_SQL",
     "MAINT_STATUSES",
@@ -155,5 +160,6 @@ __all__ = [
     "list_custody",
     "return_custody",
     "update_custody",
+    "run_checks",
     "db",
 ]

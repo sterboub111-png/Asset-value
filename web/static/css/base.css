@@ -1,11 +1,12 @@
 /* Design tokens, reset and typography. */
-/* Usool - classic financial theme: warm paper, ink-slate blue, muted ledger green and red (easy on the eyes) */
+/* Usool - classic financial theme: warm paper, ink-slate blue, muted ledger green and red (easy on the eyes).
+   Text tokens meet WCAG AA (4.5:1) on every surface they sit on, light and dark; the paper is off-white to cut glare. */
 :root {
   --hdr: #24394b; --hdr-2: #30495c; --blue: #2f5f7f; --blue-d: #284f6a; --blue-l: #d9e4eb; --blue-xl: #edf2f4;
-  --ink: #2a2c2e; --ink-2: #5b5f62; --ink-3: #8a8d8f; --line: #e4e0d7; --line-2: #ccc6b9;
-  --bg: #f4f2ec; --paper: #fffefa; --hover: #efece4; --sel: #dbe6ec;
+  --ink: #2e3235; --ink-2: #555a5e; --ink-3: #61666a; --line: #e2ded4; --line-2: #c9c3b6;
+  --bg: #f1efe8; --paper: #fdfcf7; --hover: #ebe8df; --sel: #dbe6ec;
   --ok: #3d6e3d; --ok-bg: #e4eedf; --warn: #86600f; --warn-bg: #f7edd1; --warn-line: #d3a548; --err: #9a3232; --err-bg: #f6e2de; --info-bg: #e6edf1;
-  --head: #f2efe7; --bg2: #efece4; --blue-h: #284f6a; --blue-t: #285675; --gold: #a8874c; --bar2: #bcd0dc;
+  --head: #efece4; --bg2: #ebe8df; --blue-h: #284f6a; --blue-t: #285675; --gold: #a8874c; --bar2: #bcd0dc;
   --nav-w: 264px; --radius: 3px; --shadow: 0 6px 16px rgba(36,57,75,.10), 0 1px 3px rgba(36,57,75,.08);
   font-family: "Segoe UI", "Segoe UI Web (West European)", -apple-system, "Noto Sans Arabic", Tahoma, sans-serif;
 }

@@ -4,6 +4,7 @@ import { toast } from "./dialogs.js";
 import { fmtDate, parseDate } from "./format.js";
 import { clear, h } from "./dom.js";
 import { icon } from "./icons.js";
+import { ComboBox, combo } from "./combo.js";
 export class Form {
     defs;
     el;
@@ -43,6 +44,9 @@ export class Form {
             input = text;
             control = h("span", { class: "date-in" }, text, pick, native);
         }
+        else if (d.type === "select" && (d.search || (d.options || []).length > 5)) {
+            input = combo(d.options || [], { id, allowEmpty: !d.required, placeholder: t("Type to search…"), label: t(d.label) });
+        }
         else if (d.type === "select") {
             input = h("select", { id });
             this.fillOptions(input, d.options || [], !d.required);
@@ -54,14 +58,13 @@ export class Form {
             input = h("input", { id, type: d.type === "number" ? "number" : d.type === "time" ? "time" : d.type === "password" ? "password" : d.type === "checkbox" ? "checkbox" : "text",
                 step: d.type === "number" ? d.step || "any" : undefined, maxlength: d.maxlength, autocomplete: d.autocomplete ?? (d.type === "password" ? "new-password" : "off") });
         }
-        if (d.readonly) {
-            input.setAttribute(d.type === "select" || d.type === "checkbox" ? "disabled" : "readonly", "");
-        }
+        if (d.readonly)
+            this.lock(input, true);
         this.inputs.set(d.name, input);
         this.set(d.name, val);
         input.addEventListener("input", () => { wrap.classList.remove("invalid"); if (!this.dates.has(d.name))
             d.onChange?.(this.value(d.name), this); });
-        input.addEventListener("change", () => d.onChange?.(this.value(d.name), this));
+        input.addEventListener("change", () => { wrap.classList.remove("invalid"); d.onChange?.(this.value(d.name), this); });
         const label = h("label", { for: id }, t(d.label), d.required ? h("span", { class: "req" }, "*") : null);
         const wrap = h("div", { class: `field ${d.wide ? "wide" : ""} ${d.type === "checkbox" ? "check" : ""}` }, d.type === "checkbox" ? [input, label] : [label, control || input], d.hint ? h("span", { class: "hint" }, t(d.hint)) : null);
         this.wraps.set(d.name, wrap);
@@ -76,6 +79,11 @@ export class Form {
     }
     setOptions(name, opts, blank = true) {
         const sel = this.inputs.get(name);
+        if (sel instanceof ComboBox) {
+            sel.allowEmpty = blank;
+            sel.setOptions(opts);
+            return;
+        }
         const cur = sel.value;
         this.fillOptions(sel, opts, blank);
         sel.value = cur;
@@ -99,8 +107,12 @@ export class Form {
     }
     input(name) { return this.inputs.get(name); }
     wrapOf(name) { return this.wraps.get(name); }
-    setReadonly(name, ro) {
-        const i = this.inputs.get(name);
+    setReadonly(name, ro) { this.lock(this.inputs.get(name), ro); }
+    lock(i, ro) {
+        if (i instanceof ComboBox) {
+            i.disabled = ro;
+            return;
+        }
         const attr = i instanceof HTMLSelectElement || (i instanceof HTMLInputElement && i.type === "checkbox") ? "disabled" : "readonly";
         if (ro)
             i.setAttribute(attr, "");

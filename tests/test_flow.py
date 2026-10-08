@@ -1,14 +1,12 @@
-"""End-to-end business-rule tests against a throw-away copy of the database.
+"""End-to-end business-rule tests against a clean throw-away database.
 Run:  python -m tests.test_flow"""
-import shutil
-import tempfile
 from pathlib import Path
 
-from app import db, reports, services as s
+from tests.fixture import fresh_db
 
-tmp = Path(tempfile.mkdtemp()) / "t.db"
-shutil.copy(db.DB_PATH, tmp)
-db.DB_PATH = tmp
+fresh_db()
+from app import db, reports, services as s  # noqa: E402  (after the database path is set)
+
 con = db.connect()
 
 

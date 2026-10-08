@@ -3,6 +3,7 @@ import { t } from "../core/i18n.js";
 import { clear, h } from "./dom.js";
 import { cellValue, pill, today } from "./format.js";
 import { csvText, displayText } from "./helpers.js";
+import { fold } from "./combo.js";
 export class DataGrid {
     o;
     el;
@@ -33,7 +34,7 @@ export class DataGrid {
         const tools = h("div", { class: "grid-tools" });
         if (o.search !== false) {
             const s = h("input", { class: "gt-input", style: "max-width:260px", type: "search", placeholder: t("Search…"), "aria-label": t("Search") });
-            s.addEventListener("input", () => { this.term = s.value.toLowerCase(); this.render(); });
+            s.addEventListener("input", () => { this.term = fold(s.value); this.render(); });
             tools.append(s);
         }
         (o.tools || []).forEach((n) => tools.append(n));
@@ -109,7 +110,7 @@ export class DataGrid {
         let v = this.rows;
         if (this.term) {
             const cols = this.cols();
-            v = v.filter((r) => cols.some((c) => displayText(c, r).toLowerCase().includes(this.term)));
+            v = v.filter((r) => cols.some((c) => fold(displayText(c, r)).includes(this.term)));
         }
         if (this.sortKey) {
             const k = this.sortKey;

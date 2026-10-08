@@ -218,3 +218,4 @@ table.an-grid td.empty { cursor: default; }
   .viz-svg { max-width: 100%; height: auto; }
   .viz-mark, .viz-key i, .viz-drow i, .viz-line, .viz-dot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+.an-vsearch { width: 100%; margin-bottom: 6px; }

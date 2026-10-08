@@ -1,7 +1,7 @@
 /** Page routes, the navigation tree and the permission each page needs. */
 import { assetFormPage, assetsListPage } from "../pages/assets/assets.js";
 import { dashboardPage } from "../pages/workspace/dashboard.js";
-import { auditPage, depreciationPage, journalPage, periodsPage, transactionsPage } from "../pages/depreciation/depreciation.js";
+import { auditPage, depreciationPage, integrityPage, journalPage, periodsPage, transactionsPage } from "../pages/depreciation/depreciation.js";
 import { maintenanceFormPage, maintenanceListPage } from "../pages/maintenance/maintenance.js";
 import { reportPage, reportsGroupPage, reportsIndexPage } from "../pages/reports/reports.js";
 import { chartsDashboardPage } from "../pages/reports/dashboard.js";
@@ -28,6 +28,7 @@ export const ROUTES = [
     { re: /^journal$/, fn: journalPage, nav: "#/journal", crumb: "Fixed asset journal" },
     { re: /^transactions$/, fn: transactionsPage, nav: "#/transactions", crumb: "Fixed asset transactions" },
     { re: /^audit$/, fn: auditPage, nav: "#/audit", crumb: "Audit log" },
+    { re: /^integrity$/, fn: integrityPage, nav: "#/integrity", crumb: "Data checks" },
     { re: /^reports$/, fn: reportsIndexPage, nav: "#/reports", crumb: "Reports" },
     { re: /^reports\/g\/([\w-]+)$/, fn: reportsGroupPage, nav: "#/reports", crumb: "Reports" },
     { re: /^reports\/([\w-]+)$/, fn: reportPage, nav: "#/reports", crumb: "Reports" },
@@ -42,7 +43,7 @@ export const NAV = [
         ] },
     { id: "maint", section: "Maintenance", items: [{ label: "Maintenance orders", icon: "wrench", href: "#/maintenance" }] },
     { id: "periodic", section: "Periodic tasks", items: [{ label: "Depreciation run", icon: "calc", href: "#/depreciation" }, { label: "Depreciation periods", icon: "calendar", href: "#/periods" }] },
-    { id: "inq", section: "Inquiries", items: [{ label: "Fixed asset journal", icon: "journal", href: "#/journal" }, { label: "Fixed asset transactions", icon: "list", href: "#/transactions" }, { label: "Audit log", icon: "audit", href: "#/audit" }] },
+    { id: "inq", section: "Inquiries", items: [{ label: "Fixed asset journal", icon: "journal", href: "#/journal" }, { label: "Fixed asset transactions", icon: "list", href: "#/transactions" }, { label: "Audit log", icon: "audit", href: "#/audit" }, { label: "Data checks", icon: "check", href: "#/integrity" }] },
     { id: "reports", section: "Reports", reports: true, items: [] },
     { id: "setup", section: "Setup", items: [{ label: "Settings", icon: "setup", href: "#/settings" }] },
 ];
@@ -68,7 +69,7 @@ export function permFor(href) {
         return "inquiries.view";
     if (/^#\/audit/.test(href))
         return "audit.view";
-    if (/^#\/(reports|charts)/.test(href))
+    if (/^#\/(reports|charts|integrity)/.test(href))
         return "reports.view";
     return null;
 }

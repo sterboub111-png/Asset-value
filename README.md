@@ -25,6 +25,8 @@ imported once from `Gooya asset.accdb`.
 - Changing state (POST/PUT/DELETE) requires the `X-Requested-With: GooyaAsset` header, which the app sends itself.
 
 ## Tests and tools
-- `python -m tests.test_flow` business rules, `python -m tests.test_auth` sign-in and permissions, `python -m tests.test_review` regression tests for the review fixes.
+- `python -m tests.test_flow` business rules, `python -m tests.test_auth` sign-in and permissions, `python -m tests.test_review` regression tests for the review fixes,
+  `python -m tests.test_integrity` the data checks (`npm test` runs all four). Every suite builds its own clean database from `data/access_export.json`; none reads `data/gooya_asset.db`.
+- **Data checks** (Inquiries > Data checks, `GET /api/integrity`, `app/services/integrity.py`): the arithmetic the books must satisfy, recalculated from the tables - depreciation lines, journal balance, disposals, VAT, periods, and reports tied to the books.
 - `python tools/reset_test_data.py --yes` removes test data safely; `python tools/restore_backup.py <zip>` restores a backup.
 - `node node_modules/typescript/bin/tsc -p .` builds the front end (strict, unused code is an error).

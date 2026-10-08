@@ -6,6 +6,7 @@ import { cellValue, fmtInt, parseDate } from "./format.js";
 import { downloadCsv } from "./grid.js";
 import { csvText } from "./helpers.js";
 import { icon } from "./icons.js";
+import { fold } from "./combo.js";
 import { drawChart } from "./chart.js";
 const NUM = new Set(["money", "int", "pct"]);
 const AGGS = ["sum", "count", "avg", "min", "max"];
@@ -75,7 +76,7 @@ export class AnalysisModel {
             const shown = this.o.text(k, r);
             if (f.values && f.values.length && !f.values.includes(shown))
                 return false;
-            if (f.text && !shown.toLowerCase().includes(f.text.toLowerCase()))
+            if (f.text && !fold(shown).includes(fold(f.text)))
                 return false;
             if (f.min || f.max) {
                 const v = r[k];
@@ -94,7 +95,7 @@ export class AnalysisModel {
                 }
             }
         }
-        return !this.term || this.st.cols.some((k) => this.o.text(k, r).toLowerCase().includes(this.term));
+        return !this.term || this.st.cols.some((k) => fold(this.o.text(k, r)).includes(fold(this.term)));
     }
     view() {
         let v = this.o.rows.filter((r) => this.match(r));
@@ -800,6 +801,11 @@ export class Analysis extends AnalysisModel {
                         box.addEventListener("change", () => { box.checked ? chosen.add(v) : chosen.delete(v); setF({ values: [...chosen] }); });
                         return h("label", null, box, v || t("(blank)"));
                     }));
+                    if (distinct.length > 6) { // long value lists get their own search box
+                        const q = h("input", { class: "gt-input an-vsearch", type: "search", placeholder: t("Search…"), "aria-label": `${t(c.label)} ${t("Search")}` });
+                        q.addEventListener("input", () => { const k = fold(q.value); list.querySelectorAll("label").forEach((l) => { l.style.display = !k || fold(l.textContent || "").includes(k) ? "" : "none"; }); });
+                        block.append(q);
+                    }
                     block.append(list);
                 }
                 else {

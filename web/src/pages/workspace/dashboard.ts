@@ -1,16 +1,11 @@
-/** Workspace: the hub of the system - what needs doing now, where the month-end stands, and one click to every module.
- *  Numbers and lists only (charts live on the Dashboard). Every figure opens the list behind it. */
+/** Workspace: what needs doing now and where the month-end stands. Numbers and lists only (charts live on the Dashboard);
+ *  every figure opens the list behind it. What needs attention is decided by the server (services/dashboard.attention). */
 import { api, lookups } from "../../core/api.js";
 import { getLang, t } from "../../core/i18n.js";
 import { can, getMe, userTitle } from "../../core/session.js";
 import type { Rec } from "../../core/types.js";
-import { groupSlug } from "../reports/reports.js";
 import { issueDialog } from "../contacts/custody.js";
-import { reportGroups } from "../../shell/nav.js";
-import { NAV, permFor } from "../../shell/routes.js";
-import { clear, fail, fmtDate, fmtInt, fmtMoney, h, icon, nm, page, pill } from "../../ui/index.js";
-
-type Item = { tone: "err" | "warn" | "info" | "ok"; text: string; detail?: string; href: string; action: string; perm?: string };
+import { clear, fail, fmtDate, fmtInt, fmtMoney, h, nm, page, pill } from "../../ui/index.js";
 
 const greeting = () => { const hr = new Date().getHours(); return hr < 12 ? t("Good morning, {0}") : hr < 17 ? t("Good afternoon, {0}") : t("Good evening, {0}"); };
 const longDate = () => new Intl.DateTimeFormat(getLang() === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
@@ -24,7 +19,7 @@ export async function dashboardPage(root: HTMLElement): Promise<void> {
   try { d = await api.get("/api/dashboard"); } catch (e) {
     // a role without asset access still gets a home page: the greeting and the way to its own pages
     clear(root);
-    root.append(page({ title: t("Workspace"), subtitle: t("Fixed assets") }, head(), h("div", { class: "ws-grid" }, h("div", null, h("div", { class: "msgbar" }, t("Welcome. Use the menu on the side to open the pages you have access to."))), linksPanel())).el);
+    root.append(page({ title: t("Workspace"), subtitle: t("Fixed assets") }, head(), h("div", { class: "msgbar" }, t("Welcome. Use the menu on the side to open the pages you have access to."))).el);
     if (!(e instanceof Error && /permission/i.test(e.message))) fail(e);
     return;
   }
@@ -33,21 +28,21 @@ export async function dashboardPage(root: HTMLElement): Promise<void> {
 
   // ---- quick actions: the things people start from here
   const L = can("custody.manage") ? await lookups().catch(() => null) : null;
-  const act = (label: string, ic: string, perm: string, go: string | (() => void), primary = false) => can(perm)
-    ? h(typeof go === "string" ? "a" : "button", { class: `btn ws-act ${primary ? "primary" : ""}`, ...(typeof go === "string" ? { href: go } : { type: "button", onclick: go }) }, icon(ic), h("span", null, label))
+  const act = (label: string, perm: string, go: string | (() => void), primary = false) => can(perm)
+    ? h(typeof go === "string" ? "a" : "button", { class: `btn ws-act ${primary ? "primary" : ""}`, ...(typeof go === "string" ? { href: go } : { type: "button", onclick: go }) }, label)
     : null;
   const actions = h("div", { class: "ws-actions" },
-    act(t("New fixed asset"), "plus", "assets.edit", "#/assets/new", true),
-    act(cyc.period ? t("Run depreciation for {0}", cyc.period.PeriodName) : t("Depreciation run"), "calc", "depreciation.run", cyc.period ? `#/depreciation?period=${cyc.period.PeriodID}` : "#/depreciation"),
-    act(t("New maintenance order"), "wrench", "maintenance.edit", "#/maintenance/new"),
-    L ? act(t("Issue to employee"), "user", "custody.manage", () => void issueDialog(L, {}, (c) => (location.hash = `#/custody/${c.CustodyID}`))) : null,
-    act(t("Reports"), "report", "reports.view", "#/reports"));
+    act(t("New fixed asset"), "assets.edit", "#/assets/new", true),
+    act(cyc.period ? t("Run depreciation for {0}", cyc.period.PeriodName) : t("Depreciation run"), "depreciation.run", cyc.period ? `#/depreciation?period=${cyc.period.PeriodID}` : "#/depreciation"),
+    act(t("New maintenance order"), "maintenance.edit", "#/maintenance/new"),
+    L ? act(t("Issue to employee"), "custody.manage", () => void issueDialog(L, {}, (c) => (location.hash = `#/custody/${c.CustodyID}`))) : null,
+    act(t("Reports"), "reports.view", "#/reports"));
 
   // ---- tiles: one number, one place to go
   const tile = (o: { label: string; value: string; unit?: string; tone: string; href: string; caption?: string; perm?: string; alert?: boolean }) =>
     can(o.perm) ? h("a", { class: `tile2 ws-tile tone-${o.tone} ${o.alert ? "alert" : ""}`, href: o.href },
       h("div", { class: "t-body" }, h("div", { class: "t-lbl" }, o.label), h("div", { class: "t-val" }, o.value, o.unit ? h("small", null, ` ${o.unit}`) : null),
-        h("div", { class: "t-cap" }, o.caption ?? " ")), h("span", { class: "t-go", "aria-hidden": "true" }, icon("chevron"))) : null;
+        h("div", { class: "t-cap" }, o.caption ?? " "))) : null;
   const tiles = h("div", { class: "tiles2 ws-tiles" },
     tile({ label: t("Active fixed assets"), value: fmtInt(d.asset_count), tone: "blue", href: "#/assets", caption: t("{0} groups", d.by_category.length) }),
     tile({ label: t("Net book value"), value: fmtMoney(d.nbv), unit: cur, tone: "green", href: "#/reports/asset-register",
@@ -60,24 +55,13 @@ export async function dashboardPage(root: HTMLElement): Promise<void> {
       caption: d.custody_unsigned ? t("{0} without a signed form", d.custody_unsigned) : t("All forms signed") }) : null,
     tile({ label: t("Under repair"), value: fmtInt(d.under_repair), tone: d.under_repair ? "amber" : "gray", href: "#/assets?status=Under%20Repair", caption: t("Out of service") }));
 
-  // ---- needs attention: everything that has a next step, most urgent first
-  const items: Item[] = [];
-  if (cyc.behind > 1) items.push({ tone: "err", text: t("Depreciation is {0} months behind", cyc.behind), detail: t("Next: {0}", cyc.period.PeriodName), href: `#/depreciation?period=${cyc.period.PeriodID}`, action: t("Run"), perm: "depreciation.run" });
-  if (d.draft_lines) items.push({ tone: "warn", text: t("{0} depreciation line(s) waiting to be posted", d.draft_lines), href: "#/depreciation", action: t("Review"), perm: "depreciation.post" });
-  if (d.maint_overdue) items.push({ tone: "err", text: t("{0} maintenance order(s) overdue", d.maint_overdue), href: "#/maintenance?status=Open", action: t("Open"), perm: "maintenance.view" });
-  for (const a of d.missing_opening as Rec[]) items.push({ tone: "warn", text: t("{0}: enter the opening accumulated depreciation", `${a.AssetCode} · ${nm(a, "AssetName")}`), detail: t("Started before the first period"), href: `#/assets/${a.AssetID}`, action: t("Fix"), perm: "assets.edit" });
-  if (cyc.closable.length) items.push({ tone: "info", text: t("{0} period(s) fully posted and ready to close", cyc.closable.length), detail: cyc.closable.map((p: Rec) => p.PeriodName).join(", "), href: "#/periods", action: t("Close"), perm: "periods.manage" });
-  if (d.custody_unsigned) items.push({ tone: "info", text: t("{0} custody record(s) without a signed form", d.custody_unsigned), href: "#/custody?status=Issued", action: t("Attach"), perm: "custody.manage" });
-  const soon = (d.warranty as Rec[]).filter((w) => w.WarrantyExpiryDate <= new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10));
-  if (soon.length) items.push({ tone: "info", text: t("{0} warranty(ies) expire within 30 days", soon.length), detail: soon.map((w) => w.AssetCode).join(", "), href: "#/reports/warranty-expiry", action: t("View"), perm: "reports.view" });
-  if (d.no_location) items.push({ tone: "info", text: t("{0} asset(s) without a location", d.no_location), href: "#/assets", action: t("Open"), perm: "assets.view" });
-  const mine = items.filter((i) => can(i.perm));
-  const toneIcon = { err: "warn", warn: "warn", info: "list", ok: "check" } as const;
+  // ---- needs attention: decided by the server, already limited to what this user may act on
+  const mine = d.attention as { severity: string; text: string; args: (string | number)[]; detail: string; href: string; action: string }[];
   const attention = mine.length
-    ? h("div", { class: "ws-list" }, ...mine.map((i) => h("a", { class: `ws-row tone-${i.tone}`, href: i.href },
-        h("span", { class: "ws-dot" }, icon(toneIcon[i.tone])), h("span", { class: "ws-main" }, h("b", null, i.text), i.detail ? h("small", null, i.detail) : null),
-        h("span", { class: "ws-go" }, i.action, icon("chevron")))))
-    : h("div", { class: "ws-clear" }, icon("check"), h("div", null, h("b", null, t("All clear")), h("div", null, t("Nothing needs your attention right now."))));
+    ? h("div", { class: "ws-list" }, ...mine.map((i) => h("a", { class: `ws-row ws-att sev-${i.severity}`, href: i.href },
+        h("span", { class: "ws-main" }, h("b", null, t(i.text, ...i.args.map((a) => (typeof a === "number" ? fmtInt(a) : a)))), i.detail ? h("small", null, t(i.detail)) : null),
+        h("span", { class: "ws-go" }, t(i.action)))))
+    : h("div", { class: "ws-clear" }, h("b", null, t("All clear")), h("div", null, t("Nothing needs your attention right now.")));
 
   // ---- the other lists, as tabs (Dynamics workspace style)
   const row = (href: string, main: Node | string, sub: string, right: Node | string, cls = "") =>
@@ -117,9 +101,10 @@ export async function dashboardPage(root: HTMLElement): Promise<void> {
 
   // ---- month-end: the depreciation cycle as three steps
   const step = (state: "done" | "now" | "todo", title: string, sub: string, href?: string, perm?: string) =>
-    h("li", { class: `ws-step ${state}` }, h("span", { class: "ws-sn" }, state === "done" ? icon("check") : ""),
+    h("li", { class: `ws-step ${state}` }, h("span", { class: "ws-sn" }, String(++stepNo)),
       h("div", null, href && state === "now" && can(perm) ? h("a", { href }, title) : h("b", null, title), h("small", null, sub)));
   const p = cyc.period as Rec | null;
+  let stepNo = 0;
   const cycle = h("ol", { class: "ws-steps" },
     p ? step(cyc.drafts ? "done" : "now", t("Create the proposal for {0}", p.PeriodName), cyc.drafts ? t("{0} line(s) proposed", cyc.drafts) : t("Calculates the month's depreciation"), `#/depreciation?period=${p.PeriodID}`, "depreciation.run")
       : step("done", t("Depreciation is up to date"), t("Every open period is posted")),
@@ -134,18 +119,6 @@ export async function dashboardPage(root: HTMLElement): Promise<void> {
     tiles,
     h("div", { class: "ws-grid" },
       h("section", { class: "card ws-card ws-center" }, strip, panel),
-      h("div", { class: "ws-side" },
-        can("depreciation.view") ? card(t("Month-end"), cycle, [t("Periods"), "#/periods"]) : null,
-        linksPanel())));
+      can("depreciation.view") ? h("div", { class: "ws-side" }, card(t("Month-end"), cycle, [t("Periods"), "#/periods"])) : null));
   clear(root); root.append(pg.el);
-}
-
-/** Every module in one place, as the menu has it, for the pages this user may open. */
-function linksPanel(): HTMLElement {
-  const groups = NAV.filter((s) => s.id !== "assets").map((s) => {
-    const items = s.items.filter((i) => can(permFor(i.href))).map((i) => h("a", { href: i.href, class: "ws-link" }, icon(i.icon), t(i.label)));
-    if (s.reports && can("reports.view")) items.push(...reportGroups.map((g) => h("a", { href: `#/reports/g/${groupSlug(g.group)}`, class: "ws-link" }, icon("report"), t(g.group))));
-    return items.length ? h("div", { class: "ws-lgroup" }, h("div", { class: "ws-lhead" }, t(s.section)), ...items) : null;
-  }).filter(Boolean);
-  return h("section", { class: "card ws-card" }, h("h3", null, h("span", null, t("Links"))), h("div", { class: "card-body ws-links" }, ...groups));
 }

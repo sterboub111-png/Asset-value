@@ -24,7 +24,11 @@ def _dash(c):
         d.update(maint_open=None, maint_overdue=None, maint_due=[])
     if not auth.allowed(c.user, "custody.view"):
         d.update(custody_held=None, custody_list=[], custody_unsigned=None)
+    d["attention"] = [a for a in s.attention(c.con, d) if auth.allowed(c.user, a["perm"])]
     return d
+
+@route("GET", "/api/integrity")
+def _integrity(c): return s.run_checks(c.con)
 
 @route("GET", "/api/master/(\\w+)")
 def _ml(c, n): return s.master_list(c.con, n)

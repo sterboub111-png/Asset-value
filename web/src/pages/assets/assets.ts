@@ -5,7 +5,7 @@ import { custodyGrid, issueDialog } from "../contacts/custody.js";
 import { t } from "../../core/i18n.js";
 import type { Col, Rec } from "../../core/types.js";
 import {
-  DataGrid, Form, FieldDef, nm, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtDate, fmtMoney, guard, h, opts, page, pill,
+  DataGrid, Form, FieldDef, combo, nm, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtDate, fmtMoney, guard, h, opts, page, pill,
   ribbon, toast, today,
 } from "../../ui/index.js";
 
@@ -29,10 +29,8 @@ export async function assetsListPage(root: HTMLElement, a: Args): Promise<void> 
     { key: "AccumDep", label: "Accum. depreciation", type: "money" },
     { key: "NBV", label: "Net book value", type: "money" },
   ];
-  const statusSel = h("select", { class: "gt-input", style: "width:170px", "aria-label": t("Status") },
-    h("option", { value: "" }, t("All statuses")), ...[...L.statuses, "Disposed"].map((s) => h("option", { value: s }, t(s))));
-  const catSel = h("select", { class: "gt-input", style: "width:200px", "aria-label": t("Group") },
-    h("option", { value: "" }, t("All groups")), ...L.categories.map((c) => h("option", { value: c.CategoryID }, nm(c, "CategoryName"))));
+  const statusSel = combo([...L.statuses, "Disposed"].map((s) => ({ value: s, label: t(s) })), { placeholder: t("All statuses"), label: t("Status"), width: 170 });
+  const catSel = combo(L.categories.map((c) => ({ value: c.CategoryID, label: `${c.CategoryCode} — ${nm(c, "CategoryName")}` })), { placeholder: t("All groups"), label: t("Group"), width: 230 });
   const grid = new DataGrid({ columns: cols, rows: [], totals: ["AcquisitionCost", "AccumDep", "NBV"], exportName: "fixed-assets",
     tools: [statusSel, catSel], onOpen: (r) => (location.hash = `#/assets/${r.AssetID}`), empty: "No fixed assets match the filter." });
   const load = async () => {

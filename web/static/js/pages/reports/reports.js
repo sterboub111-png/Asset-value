@@ -73,7 +73,8 @@ async function paramDefs(ids) {
             ] },
         days: { name: "days", label: "Days ahead", type: "number", step: "1" },
     };
-    return ids.map((i) => map[i]);
+    // every report filter is a searchable lookup: type part of a name instead of scrolling a list
+    return ids.map((i) => (map[i].type === "select" ? { ...map[i], search: true } : map[i]));
 }
 const VIEW_KEY = "usool.report.view";
 // Printing: a table still wider than the A4 landscape page after the print styles is scaled down to fit, never cut off.

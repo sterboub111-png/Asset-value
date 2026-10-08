@@ -84,3 +84,50 @@ def _cycle(con, next_p: dict | None, today: str) -> dict:
         AND NOT EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='DRAFT')
         AND (? IS NULL OR P.StartDate<?) ORDER BY P.StartDate""", (month_start, next_p["StartDate"] if next_p else None, next_p["StartDate"] if next_p else None))
     return out
+
+
+# ---------------------------------------------------------------- what needs attention (built here, shown by the workspace)
+_checks_cache: dict = {"key": None, "failed": []}
+
+
+def failed_checks(con) -> list[dict]:
+    """Integrity checks that fail; recomputed only when the data changed (every change writes the audit log)."""
+    from .integrity import run_checks
+    key = con.execute("SELECT (SELECT COALESCE(MAX(LogID),0) FROM tbl_AuditLog), (SELECT COUNT(*) FROM tbl_DepreciationJournal), date('now')").fetchone()
+    key = tuple(key)
+    if _checks_cache["key"] != key:
+        _checks_cache.update(key=key, failed=[c for c in run_checks(con) if not c["ok"]])
+    return _checks_cache["failed"]
+
+
+def attention(con, d: dict) -> list[dict]:
+    """Everything with a next step, most urgent first: {severity, text (English template), args, detail, href, action, perm}.
+    The workspace translates and lists them; the API leaves out what the user may not act on or see."""
+    items: list[dict] = []
+    add = lambda severity, text, args, href, action, perm, detail="": items.append(
+        {"severity": severity, "text": text, "args": args, "detail": detail, "href": href, "action": action, "perm": perm})
+    cyc = d["cycle"]
+    failed = failed_checks(con)
+    if failed:
+        add("err", "{0} data check(s) failed", [len(failed)], "#/integrity", "Review", "reports.view")
+    if cyc["behind"] > 1:
+        add("err", "Depreciation is {0} months behind", [cyc["behind"]], f"#/depreciation?period={cyc['period']['PeriodID']}", "Run", "depreciation.run",
+            cyc["period"]["PeriodName"])
+    if d["draft_lines"]:
+        add("warn", "{0} depreciation line(s) waiting to be posted", [d["draft_lines"]], "#/depreciation", "Review", "depreciation.post")
+    if d["maint_overdue"]:
+        add("err", "{0} maintenance order(s) overdue", [d["maint_overdue"]], "#/maintenance?status=Open", "Open", "maintenance.view")
+    for a in d["missing_opening"]:
+        add("warn", "{0}: enter the opening accumulated depreciation", [f"{a['AssetCode']} · {a['AssetName']}"], f"#/assets/{a['AssetID']}", "Fix", "assets.edit",
+            "Started before the first period")
+    if cyc["closable"]:
+        add("info", "{0} period(s) fully posted and ready to close", [len(cyc["closable"])], "#/periods", "Close", "periods.manage",
+            ", ".join(p["PeriodName"] for p in cyc["closable"]))
+    if d["custody_unsigned"]:
+        add("info", "{0} custody record(s) without a signed form", [d["custody_unsigned"]], "#/custody?status=Issued", "Attach", "custody.manage")
+    soon = [w for w in d["warranty"] if w["WarrantyExpiryDate"] <= date.fromordinal(date.today().toordinal() + 30).isoformat()]
+    if soon:
+        add("info", "{0} warranty(ies) expire within 30 days", [len(soon)], "#/reports/warranty-expiry", "View", "reports.view", ", ".join(w["AssetCode"] for w in soon))
+    if d["no_location"]:
+        add("info", "{0} asset(s) without a location", [d["no_location"]], "#/assets", "Open", "assets.view")
+    return items

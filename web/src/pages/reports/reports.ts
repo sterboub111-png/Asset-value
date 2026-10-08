@@ -77,7 +77,8 @@ async function paramDefs(ids: string[]): Promise<FieldDef[]> {
       { value: "asset", label: t("Asset") }, { value: "category", label: t("Fixed asset group") }, { value: "type", label: t("Type") }] },
     days: { name: "days", label: "Days ahead", type: "number", step: "1" },
   };
-  return ids.map((i) => map[i]);
+  // every report filter is a searchable lookup: type part of a name instead of scrolling a list
+  return ids.map((i) => (map[i].type === "select" ? { ...map[i], search: true } : map[i]));
 }
 
 const VIEW_KEY = "usool.report.view";

@@ -5,15 +5,18 @@ import { toast } from "./dialogs.js";
 import { fmtDate, parseDate } from "./format.js";
 import { clear, h } from "./dom.js";
 import { icon } from "./icons.js";
+import { ComboBox, combo } from "./combo.js";
 
 export interface FieldDef {
   name: string; label: string; type?: "text" | "number" | "date" | "time" | "password" | "select" | "textarea" | "checkbox";
   options?: { value: any; label: string }[]; required?: boolean; readonly?: boolean; wide?: boolean; hint?: string;
   step?: string; autocomplete?: string; onChange?: (v: string, form: Form) => void; maxlength?: number;
+  search?: boolean;   // select: a searchable lookup even with few options (lists of more than five always are)
 }
+type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | ComboBox;
 export class Form {
   el: HTMLElement;
-  private inputs = new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>();
+  private inputs = new Map<string, Control>();
   private wraps = new Map<string, HTMLElement>();
   private dates = new Set<string>();   // date fields: typed and shown dd/mm/yyyy, read as ISO
   constructor(public defs: FieldDef[], values: Rec = {}, cls = "fields") {
@@ -22,7 +25,7 @@ export class Form {
   }
   private build(d: FieldDef, val: any): HTMLElement {
     const id = `f_${d.name}_${Math.random().toString(36).slice(2, 7)}`;
-    let input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    let input: Control;
     let control: HTMLElement | null = null;
     if (d.type === "date") {
       // a text box (day first, independent of the browser's locale) with the calendar picker behind a button
@@ -39,6 +42,8 @@ export class Form {
       this.dates.add(d.name);
       input = text;
       control = h("span", { class: "date-in" }, text, pick, native);
+    } else if (d.type === "select" && (d.search || (d.options || []).length > 5)) {
+      input = combo(d.options || [], { id, allowEmpty: !d.required, placeholder: t("Type to search…"), label: t(d.label) });
     } else if (d.type === "select") {
       input = h("select", { id });
       this.fillOptions(input, d.options || [], !d.required);
@@ -48,11 +53,11 @@ export class Form {
       input = h("input", { id, type: d.type === "number" ? "number" : d.type === "time" ? "time" : d.type === "password" ? "password" : d.type === "checkbox" ? "checkbox" : "text",
         step: d.type === "number" ? d.step || "any" : undefined, maxlength: d.maxlength, autocomplete: d.autocomplete ?? (d.type === "password" ? "new-password" : "off") });
     }
-    if (d.readonly) { input.setAttribute(d.type === "select" || d.type === "checkbox" ? "disabled" : "readonly", ""); }
+    if (d.readonly) this.lock(input, true);
     this.inputs.set(d.name, input);
     this.set(d.name, val);
     input.addEventListener("input", () => { wrap.classList.remove("invalid"); if (!this.dates.has(d.name)) d.onChange?.(this.value(d.name), this); });
-    input.addEventListener("change", () => d.onChange?.(this.value(d.name), this));
+    input.addEventListener("change", () => { wrap.classList.remove("invalid"); d.onChange?.(this.value(d.name), this); });
     const label = h("label", { for: id }, t(d.label), d.required ? h("span", { class: "req" }, "*") : null);
     const wrap = h("div", { class: `field ${d.wide ? "wide" : ""} ${d.type === "checkbox" ? "check" : ""}` },
       d.type === "checkbox" ? [input, label] : [label, control || input], d.hint ? h("span", { class: "hint" }, t(d.hint)) : null);
@@ -65,8 +70,10 @@ export class Form {
     for (const o of opts) sel.appendChild(h("option", { value: String(o.value) }, o.label));
   }
   setOptions(name: string, opts: { value: any; label: string }[], blank = true) {
-    const sel = this.inputs.get(name) as HTMLSelectElement; const cur = sel.value;
-    this.fillOptions(sel, opts, blank); sel.value = cur;
+    const sel = this.inputs.get(name)!;
+    if (sel instanceof ComboBox) { sel.allowEmpty = blank; sel.setOptions(opts); return; }
+    const cur = sel.value;
+    this.fillOptions(sel as HTMLSelectElement, opts, blank); sel.value = cur;
   }
   set(name: string, v: any) {
     const i = this.inputs.get(name); if (!i) return;
@@ -81,8 +88,9 @@ export class Form {
   }
   input(name: string) { return this.inputs.get(name)!; }
   wrapOf(name: string) { return this.wraps.get(name)!; }
-  setReadonly(name: string, ro: boolean) {
-    const i = this.inputs.get(name)!;
+  setReadonly(name: string, ro: boolean) { this.lock(this.inputs.get(name)!, ro); }
+  private lock(i: Control, ro: boolean) {
+    if (i instanceof ComboBox) { i.disabled = ro; return; }
     const attr = i instanceof HTMLSelectElement || (i instanceof HTMLInputElement && i.type === "checkbox") ? "disabled" : "readonly";
     if (ro) i.setAttribute(attr, ""); else i.removeAttribute(attr);
   }

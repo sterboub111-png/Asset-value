@@ -8,11 +8,9 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from app import db
+from tests.fixture import fresh_db
 
-tmp = Path(tempfile.mkdtemp())
-shutil.copy(db.DB_PATH, tmp / "r.db")
-db.DB_PATH = tmp / "r.db"
-db.DATA_DIR = tmp
+tmp = fresh_db("r.db")
 from app import auth, reports, server, services as s  # noqa: E402
 
 s.db.ROOT = tmp

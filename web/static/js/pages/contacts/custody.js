@@ -1,6 +1,6 @@
 import { api, lookups } from "../../core/api.js";
 import { t } from "../../core/i18n.js";
-import { DataGrid, Form, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtDate, guard, h, nm, page, pill, ribbon, toast, today } from "../../ui/index.js";
+import { DataGrid, combo, Form, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtDate, guard, h, nm, page, pill, ribbon, toast, today } from "../../ui/index.js";
 import { employeeOptions, quickEmployee } from "./employees.js";
 export const custodyStatus = (c) => pill(c.Status === "Issued" ? "Issued" : "Returned", c.Status === "Issued" ? "warn" : "");
 /** Grid of custody records (used on the employee, asset and custody pages). */
@@ -82,9 +82,9 @@ async function attachSigned(cu, done) {
 // ================================================================ list
 export async function custodyListPage(root, a) {
     const L = await lookups(true);
-    const statusSel = h("select", { class: "gt-input", style: "width:170px", "aria-label": t("Status") }, h("option", { value: "" }, t("All statuses")), h("option", { value: "Issued" }, t("Issued")), h("option", { value: "Returned" }, t("Returned")));
+    const statusSel = combo([{ value: "Issued", label: t("Issued") }, { value: "Returned", label: t("Returned") }], { placeholder: t("All statuses"), label: t("Status"), width: 170 });
     statusSel.value = a.query.get("status") ?? "Issued";
-    const empSel = h("select", { class: "gt-input", style: "width:220px", "aria-label": t("Employee") }, h("option", { value: "" }, t("All employees")), ...employeeOptions(L).map((o) => h("option", { value: o.value }, o.label)));
+    const empSel = combo(employeeOptions(L), { placeholder: t("All employees"), label: t("Employee"), width: 240 });
     const cols = [
         { key: "CustodyNo", label: "Custody", link: (r) => `#/custody/${r.CustodyID}` }, { key: "EmployeeName", label: "Employee", link: (r) => `#/employees/${r.EmployeeID}` },
         { key: "Department", label: "Department" }, { key: "AssetCode", label: "Asset", link: (r) => `#/assets/${r.AssetID}` }, { key: "AssetName", label: "Name" },

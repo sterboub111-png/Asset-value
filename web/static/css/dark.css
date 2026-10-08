@@ -1,7 +1,7 @@
 /* Dark theme overrides. */
 /* ---- dark theme: the same slate-and-paper palette at night */
 :root[data-theme="dark"] {
-  --bg: #1c1f22; --paper: #24282c; --head: #2b3035; --bg2: #2f3439; --ink: #eceae5; --ink-2: #c3c0b9; --ink-3: #8f9396;
+  --bg: #1c1f22; --paper: #24282c; --head: #2b3035; --bg2: #2f3439; --ink: #eceae5; --ink-2: #c3c0b9; --ink-3: #9ea2a5;
   --line: #3a4046; --line-2: #555c63; --hover: #2f3439; --sel: #24405a; --blue: #4f86ad; --blue-xl: #1d2b36; --blue-l: #23394a; --blue-t: #8fb8d6; --blue-h: #5b93bb;
   --ok: #8fbf7f; --ok-bg: #22331f; --warn: #e3bf63; --warn-bg: #3a3118; --warn-line: #b8913f; --err: #e08a84; --err-bg: #46221f; --info-bg: #1d2b36;
   --hdr: #151d24; --hdr-2: #22303b; --gold: #c9a96b; --bar2: #34536b; --shadow: 0 6px 16px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.35);
