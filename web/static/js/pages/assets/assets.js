@@ -5,7 +5,7 @@ import { custodyGrid, issueDialog } from "../contacts/custody.js";
 import { t } from "../../core/i18n.js";
 import { DataGrid, Form, nm, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtDate, fmtMoney, guard, h, opts, page, pill, ribbon, toast, today, } from "../../ui/index.js";
 // ================================================================ list
-export async function assetsListPage(root, _a) {
+export async function assetsListPage(root, a) {
     const L = await lookups();
     let assets = [];
     const cols = [
@@ -35,6 +35,8 @@ export async function assetsListPage(root, _a) {
             fail(e);
         }
     };
+    statusSel.value = a.query.get("status") ?? ""; // links from the workspace open the list already filtered
+    catSel.value = a.query.get("category") ?? "";
     statusSel.onchange = catSel.onchange = load;
     const open = () => { const r = grid.selected(); if (r)
         location.hash = `#/assets/${r.AssetID}`;

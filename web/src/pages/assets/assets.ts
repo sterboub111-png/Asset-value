@@ -12,7 +12,7 @@ import {
 type Args = { args: string[]; query: URLSearchParams };
 
 // ================================================================ list
-export async function assetsListPage(root: HTMLElement, _a: Args): Promise<void> {
+export async function assetsListPage(root: HTMLElement, a: Args): Promise<void> {
   const L = await lookups();
   let assets: Rec[] = [];
   const cols: Col[] = [
@@ -41,6 +41,8 @@ export async function assetsListPage(root: HTMLElement, _a: Args): Promise<void>
       grid.setRows(assets);
     } catch (e) { fail(e); }
   };
+  statusSel.value = a.query.get("status") ?? "";   // links from the workspace open the list already filtered
+  catSel.value = a.query.get("category") ?? "";
   statusSel.onchange = catSel.onchange = load;
   const open = () => { const r = grid.selected(); if (r) location.hash = `#/assets/${r.AssetID}`; else toast(t("Select an asset first.")); };
   const rb = ribbon([[

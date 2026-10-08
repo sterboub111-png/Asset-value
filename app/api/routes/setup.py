@@ -17,7 +17,14 @@ def _lookups(c):
     return d
 
 @route("GET", "/api/dashboard")
-def _dash(c): return s.dashboard(c.con)
+def _dash(c):
+    d = s.dashboard(c.con)
+    # the workspace only shows the maintenance and custody figures a user may open
+    if not auth.allowed(c.user, "maintenance.view"):
+        d.update(maint_open=None, maint_overdue=None, maint_due=[])
+    if not auth.allowed(c.user, "custody.view"):
+        d.update(custody_held=None, custody_list=[], custody_unsigned=None)
+    return d
 
 @route("GET", "/api/master/(\\w+)")
 def _ml(c, n): return s.master_list(c.con, n)

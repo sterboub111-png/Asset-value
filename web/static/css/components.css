@@ -137,3 +137,62 @@ table.grid td a.lnk { font-weight: 600; }
 .col-pop .btn { margin: 6px 14px 4px; }
 .mini-list .todo-cta a.btn { display: inline-flex; padding: 6px 18px; border-bottom: 0; color: #fff; }
 .mini-list .todo-cta a.btn:hover { background: var(--blue-h); }
+
+/* ---- workspace: greeting and quick actions, tiles, action center with tabs, month-end steps, links */
+.ws-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 16px; }
+.ws-hello h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+.ws-date { color: var(--ink-2); font-size: 13px; margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ws-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ws-act { display: inline-flex; align-items: center; gap: 7px; text-decoration: none !important; color: var(--ink); font-weight: 600; }
+.ws-act svg { color: var(--blue); } .ws-act.primary { color: #fff; } .ws-act.primary svg { color: #fff; }
+.ws-tiles { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.ws-tile .t-val { font-size: 23px; white-space: nowrap; }
+.ws-tile .t-lbl { white-space: normal; line-height: 1.3; min-height: 2.6em; }
+.ws-tile .t-val small { font-size: 11px; }
+.ws-tile .t-cap { white-space: normal; line-height: 1.35; }
+.ws-tile { position: relative; padding-inline-end: 30px; }
+.ws-tile .t-go { position: absolute; inset-inline-end: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); transition: color .15s, transform .15s; }
+.ws-tile .t-go svg { width: 13px; height: 13px; } [dir=rtl] .ws-tile .t-go svg { transform: scaleX(-1); }
+.ws-tile:hover .t-go { color: var(--blue); }
+.ws-tile.alert .t-cap { color: var(--warn); font-weight: 600; }
+.ws-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .ws-grid { grid-template-columns: 1fr; } }
+.ws-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ws-card > h3 .ws-more { font-size: 12px; font-weight: 400; }
+.ws-center { display: flex; flex-direction: column; }
+.ws-tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); padding: 0 10px; background: var(--head); }
+.ws-tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 12px 9px; cursor: pointer; font-size: 13.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 7px; margin-bottom: -1px; }
+.ws-tab:hover { color: var(--ink); } .ws-tab.active { color: var(--blue-t); border-bottom-color: var(--blue); font-weight: 600; }
+.ws-badge { background: var(--line); color: var(--ink-2); border-radius: 9px; padding: 0 7px; font-size: 11px; font-weight: 700; line-height: 18px; }
+.ws-badge.hot { background: var(--warn-bg); color: var(--warn); }
+.ws-panel { padding: 6px 16px 12px; }
+.ws-list { display: flex; flex-direction: column; }
+.ws-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; margin: 0 -6px; border-bottom: 1px solid var(--line); color: var(--ink); border-radius: var(--radius); }
+.ws-row:last-child { border-bottom: 0; } .ws-row:hover { background: var(--blue-xl); text-decoration: none; }
+.ws-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ws-main b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-main small { color: var(--ink-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-meta { color: var(--ink-2); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ws-dot { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--info-bg); color: var(--blue-t); }
+.ws-row.tone-err .ws-dot { background: var(--err-bg); color: var(--err); } .ws-row.tone-warn .ws-dot { background: var(--warn-bg); color: var(--warn); }
+.ws-go { display: inline-flex; align-items: center; gap: 4px; color: var(--blue-t); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+.ws-go svg { width: 11px; height: 11px; } [dir=rtl] .ws-go svg { transform: scaleX(-1); }
+.ws-clear { display: flex; gap: 12px; align-items: center; padding: 26px 6px; color: var(--ink-2); }
+.ws-clear > .ic, .ws-clear > span:first-child { width: 36px; height: 36px; border-radius: 50%; background: var(--ok-bg); color: var(--ok); display: grid; place-items: center; }
+.ws-clear b { color: var(--ink); }
+.ws-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ws-step { display: flex; gap: 12px; position: relative; padding-bottom: 14px; }
+.ws-step:not(:last-child)::before { content: ""; position: absolute; inset-inline-start: 11px; top: 26px; bottom: 2px; width: 2px; background: var(--line); }
+.ws-step.done:not(:last-child)::before { background: var(--ok); }
+.ws-sn { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line-2); background: var(--paper); display: grid; place-items: center; color: #fff; }
+.ws-sn svg { width: 12px; height: 12px; stroke-width: 2; }
+.ws-step.done .ws-sn { background: var(--ok); border-color: var(--ok); }
+.ws-step.now .ws-sn { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+.ws-step > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 2px; }
+.ws-step small { color: var(--ink-3); font-size: 12px; } .ws-step.todo b { color: var(--ink-2); font-weight: 500; }
+.ws-step.now a { font-weight: 600; }
+.ws-links { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.ws-lgroup { display: flex; flex-direction: column; min-width: 0; }
+.ws-lhead { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); margin-bottom: 4px; }
+.ws-link { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: var(--blue-t); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-link svg { color: var(--ink-3); width: 14px; height: 14px; }

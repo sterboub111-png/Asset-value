@@ -44,5 +44,43 @@ def dashboard(con) -> dict:
         "custody_held": one(con, "SELECT COUNT(*) n FROM tbl_AssetCustody WHERE Status='Issued'")["n"],
         "maint_open": one(con, "SELECT COUNT(*) n FROM tbl_Maintenance WHERE Status IN ('Planned','In Progress')")["n"],
         "maint_overdue": one(con, "SELECT COUNT(*) n FROM tbl_Maintenance WHERE Status IN ('Planned','In Progress') AND ScheduledDate<?", (today,))["n"],
-        "maint_due": [_maint_flags(m) for m in rows(con, MAINT_SQL + " WHERE M.Status IN ('Planned','In Progress') ORDER BY M.ScheduledDate LIMIT 6")],
+        "maint_due": [_maint_flags(m) for m in rows(con, MAINT_SQL + " WHERE M.Status IN ('Planned','In Progress') ORDER BY M.ScheduledDate LIMIT 8")],
+        "custody_list": rows(con, """SELECT U.CustodyID, U.CustodyNo, U.IssueDate, U.AssetID, A.AssetCode, A.AssetName, A.AssetNameAr, E.EmployeeName, E.EmployeeNameAr,
+            (SELECT COUNT(*) FROM tbl_AssetAttachments T WHERE T.CustodyID=U.CustodyID) AS AttachmentCount
+            FROM tbl_AssetCustody U JOIN tbl_Assets A ON A.AssetID=U.AssetID JOIN tbl_Employees E ON E.EmployeeID=U.EmployeeID
+            WHERE U.Status='Issued' ORDER BY U.IssueDate DESC, U.CustodyID DESC LIMIT 8"""),
+        "custody_unsigned": one(con, """SELECT COUNT(*) n FROM tbl_AssetCustody U WHERE U.Status='Issued'
+            AND NOT EXISTS (SELECT 1 FROM tbl_AssetAttachments T WHERE T.CustodyID=U.CustodyID)""")["n"],
+        "under_repair": sum(1 for a in assets if a["AssetStatus"] == "Under Repair"),
+        "no_location": sum(1 for a in assets if not a["LocationID"]),
+        "missing_opening": _missing_opening(con),
+        "cycle": _cycle(con, open_p, today),
     }
+
+
+def _missing_opening(con) -> list[dict]:
+    """Assets that started depreciating before the first period but carry no opening accumulated depreciation."""
+    first = one(con, "SELECT MIN(StartDate) s FROM tbl_DepreciationPeriods", raw=True)["s"]
+    if not first:
+        return []
+    return rows(con, """SELECT A.AssetID, A.AssetCode, A.AssetName, A.AssetNameAr FROM tbl_Assets A
+        JOIN tbl_DepreciationMethods M ON M.MethodID=A.MethodID
+        WHERE A.AssetStatus<>'Disposed' AND M.MethodCode='SL' AND COALESCE(A.OpeningAccumDep,0)=0
+          AND substr(COALESCE(A.DepreciationStartDate, A.InServiceDate, A.AcquisitionDate),1,7) < substr(?,1,7)
+          AND NOT EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.AssetID=A.AssetID AND D.PostingStatus='POSTED')
+        ORDER BY A.AssetCode""", (first,))
+
+
+def _cycle(con, next_p: dict | None, today: str) -> dict:
+    """Where the monthly depreciation cycle stands: the period to work on, its drafts, months behind, periods ready to close."""
+    month_start = today[:8] + "01"
+    out = {"period": next_p, "drafts": 0, "behind": 0, "closable": []}
+    if next_p:
+        out["drafts"] = one(con, "SELECT COUNT(*) n FROM tbl_Depreciation WHERE PeriodID=? AND PostingStatus='DRAFT'", (next_p["PeriodID"],))["n"]
+        out["behind"] = one(con, "SELECT COUNT(*) n FROM tbl_DepreciationPeriods WHERE StartDate>=? AND EndDate<?", (next_p["StartDate"], month_start))["n"]
+    # past open periods that are fully posted (something posted, no drafts left) can be closed
+    out["closable"] = rows(con, """SELECT P.PeriodID, P.PeriodName FROM tbl_DepreciationPeriods P WHERE P.PeriodStatus='OPEN' AND P.EndDate<?
+        AND EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='POSTED')
+        AND NOT EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='DRAFT')
+        AND (? IS NULL OR P.StartDate<?) ORDER BY P.StartDate""", (month_start, next_p["StartDate"] if next_p else None, next_p["StartDate"] if next_p else None))
+    return out
