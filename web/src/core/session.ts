@@ -20,5 +20,21 @@ export const initials = (name: string): string => {
   return ((parts[0]?.[0] || "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 };
 
-export function getTheme(): string { try { return localStorage.getItem("gooya.theme") === "dark" ? "dark" : "light"; } catch { return "light"; } }
-export function setTheme(v: string): void { document.documentElement.dataset.theme = v; try { localStorage.setItem("gooya.theme", v); } catch { /* ignore */ } }
+// ---- appearance: light, dark, or "system" (follows the operating system and changes with it), like Claude Code
+export type ThemePref = "light" | "dark" | "system";
+const THEMES: ThemePref[] = ["light", "dark", "system"];
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+export function getTheme(): ThemePref {
+  try { const v = localStorage.getItem("gooya.theme") as ThemePref; return THEMES.includes(v) ? v : "system"; } catch { return "system"; }
+}
+export const resolvedTheme = (p: ThemePref = getTheme()): "light" | "dark" => (p === "system" ? (darkQuery.matches ? "dark" : "light") : p);
+export function applyTheme(): void { document.documentElement.dataset.theme = resolvedTheme(); }
+export function setTheme(v: string): void {
+  try { localStorage.setItem("gooya.theme", THEMES.includes(v as ThemePref) ? v : "system"); } catch { /* ignore */ }
+  applyTheme();
+}
+/** Light -> dark -> system -> light (the top-bar and sign-in buttons). */
+export const nextTheme = (): ThemePref => THEMES[(THEMES.indexOf(getTheme()) + 1) % THEMES.length];
+export const themeIcon = (p: ThemePref = getTheme()): string => (p === "light" ? "sun" : p === "dark" ? "moon" : "monitor");
+export const themeLabel = (p: ThemePref = getTheme()): string => (p === "light" ? "Light" : p === "dark" ? "Dark" : "Automatic (system)");
+darkQuery.addEventListener("change", () => { if (getTheme() === "system") applyTheme(); });

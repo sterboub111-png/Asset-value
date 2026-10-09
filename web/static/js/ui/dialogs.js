@@ -8,6 +8,8 @@ export function toast(message, kind = "") {
         box = h("div", { class: "toasts" });
         document.body.appendChild(box);
     }
+    if (kind === "ok")
+        box.querySelectorAll(".toast.err").forEach((n) => n.remove()); // a success makes earlier errors stale
     const el = h("div", { class: `toast ${kind}`, role: kind === "err" ? "alert" : "status" }, message);
     box.appendChild(el);
     setTimeout(() => el.remove(), kind === "err" ? 7000 : 3500);

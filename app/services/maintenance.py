@@ -5,7 +5,7 @@ import re
 from datetime import date
 from typing import Any
 
-from .common import ApiError, actor, audit, now, num, one, parse_date, rows, to_int
+from .common import ApiError, actor, audit, now, num, one, parse_date, rows, scope_sql, to_int
 
 # ---------------------------------------------------------------- maintenance
 MAINT_TYPES = ["Preventive", "Corrective", "Inspection"]
@@ -23,7 +23,7 @@ def _maint_flags(m: dict) -> dict:
 
 
 def list_maintenance(con, status: str = "", mtype: str = "", asset: str = "") -> list[dict]:
-    sql, args = MAINT_SQL + " WHERE 1=1", []
+    sql, args = MAINT_SQL + " WHERE 1=1" + scope_sql("A"), []
     if status == "Open":
         sql += " AND M.Status IN ('Planned','In Progress')"
     elif status:
@@ -39,7 +39,7 @@ def list_maintenance(con, status: str = "", mtype: str = "", asset: str = "") ->
 
 
 def get_maintenance(con, mid: int) -> dict:
-    m = one(con, MAINT_SQL + " WHERE M.MaintenanceID=?", (mid,), raw=True)
+    m = one(con, MAINT_SQL + " WHERE M.MaintenanceID=?" + scope_sql("A"), (mid,), raw=True)
     if not m:
         raise ApiError("Maintenance order not found", 404)
     return _maint_flags(m)
@@ -68,7 +68,7 @@ def _vendor(con, data: dict) -> dict:
 def _clean_maint(con, data: dict) -> dict:
     v: dict[str, Any] = {}
     aid = to_int(data.get("AssetID"), "AssetID")
-    a = one(con, "SELECT AssetID,AssetStatus FROM tbl_Assets WHERE AssetID=?", (aid,))
+    a = one(con, "SELECT AssetID,AssetStatus FROM tbl_Assets A WHERE AssetID=?" + scope_sql("A"), (aid,))
     if not a:
         raise ApiError("Asset is required")
     if a["AssetStatus"] == "Disposed":

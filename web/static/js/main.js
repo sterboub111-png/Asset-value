@@ -1,16 +1,17 @@
 /** Entry point: boots the app, shows sign-in or the shell, and renders the page for the current hash. */
 import { api, hooks, lookups } from "./core/api.js";
 import { applyLang, setLang, t } from "./core/i18n.js";
-import { can, getMe, getTheme, setMe, setTheme } from "./core/session.js";
+import { applyTheme, can, getMe, setMe, setTheme } from "./core/session.js";
 import { showLogin } from "./pages/auth/login.js";
-import { groupSlug } from "./pages/reports/reports.js";
 import { initKeyboard } from "./shell/keyboard.js";
 import { forcePasswordChange, signOut, signingOut } from "./shell/account.js";
-import { buildNav, loadReportGroups, markActive, narrow, railKey, reportGroups } from "./shell/nav.js";
+import { buildNav, loadReportGroups, markActive, narrow, railKey } from "./shell/nav.js";
 import { ROUTES, permFor } from "./shell/routes.js";
 import { buildTopbar } from "./shell/topbar.js";
-import { clear, closeAllDialogs, fail, h, icon } from "./ui/index.js";
-document.documentElement.dataset.theme = getTheme();
+import { rememberVisit } from "./shell/search.js";
+import { clear, closeAllDialogs, confirmDialog, fail, h, icon } from "./ui/index.js";
+import { isDirty, markClean } from "./core/dirty.js";
+applyTheme();
 let mainEl;
 let crumbEl;
 let seq = 0;
@@ -21,8 +22,8 @@ function parseHash() {
     return { path: path.replace(/\/$/, ""), query: new URLSearchParams(qs || "") };
 }
 async function render() {
-    if (!getMe() || getMe().MustChangePassword)
-        return;
+    if (!getMe() || getMe().MustChangePassword || !mainEl?.isConnected)
+        return; // the shell is still being built
     const { path, query } = parseHash();
     const my = ++seq;
     closeAllDialogs();
@@ -31,10 +32,7 @@ async function render() {
         const m = path.match(r.re);
         if (!m)
             continue;
-        const repId = path.startsWith("reports/") && !path.startsWith("reports/g/") ? path.slice(8) : "";
-        const repGroup = repId ? reportGroups.find((g) => g.ids.includes(repId)) : undefined;
-        const navHref = path.startsWith("reports/g/") ? `#/${path}` : repGroup ? `#/reports/g/${groupSlug(repGroup.group)}` : r.nav;
-        markActive(navHref);
+        markActive(r.nav);
         crumbEl.textContent = t(r.crumb);
         clear(mainEl);
         mainEl.scrollTop = 0;
@@ -46,6 +44,8 @@ async function render() {
         }
         try {
             await r.fn(holder, { args: m.slice(1), query });
+            if (my === seq)
+                rememberVisit(location.hash, holder.querySelector(".page-head h1")?.textContent || "", t(r.crumb));
         }
         catch (e) {
             if (my === seq) {
@@ -78,7 +78,7 @@ async function startSession(me) {
     setMe(me);
     if (me.Language === "ar" || me.Language === "en")
         setLang(me.Language); // personal preferences
-    if (me.Theme === "light" || me.Theme === "dark")
+    if (me.Theme === "light" || me.Theme === "dark" || me.Theme === "system")
         setTheme(me.Theme);
     applyLang();
     const app = document.getElementById("app");
@@ -124,5 +124,22 @@ async function boot(notice) {
     await startSession(st.user);
 }
 initKeyboard();
-window.addEventListener("hashchange", render);
+// leaving a form with unsaved changes asks first; "stay" puts the address back without reloading the page
+let lastHash = location.hash;
+window.addEventListener("hashchange", async () => {
+    if (isDirty()) {
+        const leave = await confirmDialog(t("You have unsaved changes. Leave this page and discard them?"), { danger: true, ok: t("Discard changes"), title: t("Unsaved changes") });
+        if (!leave) {
+            history.replaceState(null, "", lastHash || "#/");
+            return;
+        }
+        markClean();
+    }
+    lastHash = location.hash;
+    void render();
+});
+addEventListener("beforeunload", (e) => { if (isDirty()) {
+    e.preventDefault();
+    e.returnValue = "";
+} });
 void boot();

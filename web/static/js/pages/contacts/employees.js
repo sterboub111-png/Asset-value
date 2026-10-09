@@ -1,6 +1,6 @@
 import { api, invalidateLookups, lookups } from "../../core/api.js";
 import { t } from "../../core/i18n.js";
-import { DataGrid, Form, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, guard, h, nm, opts, page, pill, ribbon, toast } from "../../ui/index.js";
+import { DataGrid, combo, Form, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, guard, h, nm, opts, page, pill, ribbon, toast } from "../../ui/index.js";
 import { custodyGrid, issueDialog } from "./custody.js";
 const general = [
     { name: "EmployeeCode", label: "Employee code", required: true, maxlength: 20 },
@@ -37,7 +37,7 @@ export async function employeesListPage(root, _a) {
         { key: "HeldCount", label: "Assets held", type: "int" }, { key: "TotalCustody", label: "Total custody", type: "int" },
         { key: "IsActive", label: "Status", render: (r) => pill(r.IsActive ? "Active" : "Inactive") },
     ];
-    const actSel = h("select", { class: "gt-input", style: "width:150px", "aria-label": t("Status") }, h("option", { value: "" }, t("All statuses")), h("option", { value: "1" }, t("Active")), h("option", { value: "0" }, t("Inactive")));
+    const actSel = combo([{ value: "1", label: t("Active") }, { value: "0", label: t("Inactive") }], { placeholder: t("All statuses"), label: t("Status"), width: 160 });
     const grid = new DataGrid({ columns: cols, rows: [], exportName: "employees", tools: [actSel], onOpen: (r) => (location.hash = `#/employees/${r.EmployeeID}`), empty: "No employees yet." });
     const load = async () => { try {
         grid.setRows(await api.get(`/api/employees?active=${actSel.value}`));

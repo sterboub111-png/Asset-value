@@ -15,12 +15,13 @@ Build: `node node_modules/typescript/bin/tsc -p .` (`Usool.bat` does not build; 
 | `core/session.ts` | `getMe/setMe`, `can(permission)`, theme, initials and name helpers |
 | `core/types.ts` | `Rec`, `Col`, `Lookups` |
 | `shell/routes.ts` | `ROUTES` (regex → page function, breadcrumb), `NAV` tree, `permFor(href)` |
-| `shell/nav.ts` | navigation pane: sections, live filter, report groups, **icon rail** |
+| `shell/nav.ts` | navigation pane (QuickBooks-style): a **+ New** menu, a few accounting tasks (`NAV` in `routes.ts`) that open to show their pages, Settings at the foot, and the **icon rail** with flyouts |
+| `shell/search.ts` | **search everything** in the top bar (`/` or `Ctrl+K`): pages and actions, assets, suppliers, employees and reports, grouped, permission-aware, Arabic-aware |
 | `shell/topbar.ts` | top bar: nav toggle, brand, breadcrumb, asset search, language, backup, theme, account menu |
 | `shell/account.ts` | account menu, sign-out, forced password change |
 | `ui/` | the UI kit (below); `ui/index.ts` re-exports it, pages import from `../../ui/index.js` |
 | `pages/settings/settings.ts` | Settings area: a side list of settings grouped as Personal / Company / Fixed asset setup / Accounting / Administration (`SETTINGS_GROUPS`, `SETTINGS_SECTIONS` with permissions) and the chosen setting on the right; a bar above it has **Back** and the path (Settings / Area / Setting) |
-| `pages/<feature>/` | one file per screen family: `workspace/dashboard`, `assets/assets`, `depreciation/depreciation`, `maintenance/maintenance`, `contacts/{suppliers,employees,custody}`, `reports/reports`, `settings/{settings,setup,users,backup,account}`, `auth/login` |
+| `pages/<feature>/` | one file per screen family: `workspace/dashboard`, `assets/assets`, `depreciation/depreciation`, `maintenance/maintenance`, `contacts/{suppliers,employees,custody}`, `reports/{reports,dashboard}` (reports center with favourites and search, report periods presets, centered accounting heading; dashboard = pinned charts, `#/charts`), `settings/{settings,setup,users,backup,account}`, `auth/login` |
 
 ### UI kit (`ui/`)
 
@@ -28,11 +29,13 @@ Build: `node node_modules/typescript/bin/tsc -p .` (`Usool.bat` does not build; 
 |---|---|
 | `dom.ts` | `h(tag, attrs, ...children)`, `append`, `clear` |
 | `icons.ts` | `icon(name)` inline SVG set (add new paths to `ICONS`) |
-| `format.ts` | `fmtMoney`, `fmtInt`, `fmtDate`, `fmtPct`, `today`, `pill`, `cellValue` |
+| `format.ts` | `fmtMoney`, `fmtInt`, `fmtDate` (shows dd/mm/yyyy), `parseDate` (typed date → ISO; Arabic digits too), `fmtPct`, `today`, `pill`, `cellValue` |
 | `dialogs.ts` | `toast`, `fail`, `dialog` (stacked, focus trap, Esc), `confirmDialog`, `closeAllDialogs` |
-| `form.ts` | `Form` + `FieldDef` (typed fields, validation, `get()/value()/set`), `fastTab` (collapsible section) |
+| `form.ts` | `Form` + `FieldDef` (typed fields, validation, `get()/value()/set`), `fastTab` (collapsible section). Date fields are typed dd/mm/yyyy with a calendar button; `get()`/`value()` return ISO dates |
 | `layout.ts` | `ribbon` (tabs, groups, permission-aware buttons), `page` (header + body) |
-| `grid.ts` | `DataGrid` (sort, quick filter, column filters, selection, CSV export, double-click open) |
+| `grid.ts` | `DataGrid` (sort, quick filter, column chooser remembered per list, selection, CSV export, double-click open). `Col.hidden` = hidden by default |
+| `chart.ts` | `drawChart`: SVG column / bar / line / stacked / donut charts (4px rounded data ends, 2px surface gaps, hairline grid, one tooltip per category, legend from two series, click to drill). Colours are the `--viz-1..8` tokens in `analysis.css`, validated for colour-blind separation in light and dark |
+| `analysis.ts` | `Analysis`: report analysis mode after Business Central's *Analyze* — named tabs, column chooser, row groups with subtotals, pivot mode (column labels), Sum/Count/Average/Min/Max values, per-column filters, a status bar that totals the selected cells (Ctrl+C copies), CSV export of what is on screen, and a **Chart** panel that follows the grouping / values / pivot (click a category to filter, "Pin to dashboard"). `AnalysisModel` holds the data side (filter, sort, group, chart data) and is reused by the dashboard. Layouts are kept per report in `localStorage` |
 | `helpers.ts` | `nm` (Arabic/English name), `opts`, `guard` (busy wrapper), `onSave` (Ctrl+S), `redirectIf`, `csvText`, `displayText` |
 
 ## Pages
@@ -69,8 +72,11 @@ column in Arabic mode.
 
 `base` (tokens, reset) → `shell` (top bar, navigation) → `page` (headers, ribbon) → `components` (tiles, grid, forms, dialogs) →
 `settings` (split views, settings list and path bar) → `dark` (theme overrides via `:root[data-theme="dark"]`) → `documents` (handover form, report
-viewer, print) → `account` (menu, roles editor, no-access) → `login` → `nav-rail`.
+viewer, print) → `analysis` (report parameters bar, analysis mode) → `account` (menu, roles editor, no-access) → `login` → `nav-rail`.
 
-- Colours, spacing and shadows are CSS variables in `base.css`; the look follows Microsoft Dynamics 365 (Segoe UI, 2 px radius, blue accent).
+- Colours, spacing and shadows are CSS variables in `base.css`: a white, classic-finance theme (white surfaces, ink-navy text, steel-blue accent,
+  muted ledger green / red). `dark.css` is a warm charcoal theme in the manner of Claude Code. Appearance is **Light / Dark / Automatic**
+  (`core/session.ts`: `system` follows the operating system and changes with it). Every text token meets WCAG AA on its surfaces.
+  One face everywhere, `--font` (Segoe UI first), including reports and print. Destructive ribbon commands (`danger`) are red and set apart.
 - RTL uses logical properties (`inset-inline-*`, `padding-inline-*`, `border-inline-*`); numbers stay left-to-right through a dedicated rule.
 - Print styles hide the chrome and lay out reports and forms on paper (A4).

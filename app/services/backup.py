@@ -9,6 +9,7 @@ from datetime import date
 from datetime import datetime
 from pathlib import Path
 
+from .. import db
 from .files import _attach_root
 from .common import ApiError, actor, audit, now
 from .settings import get_settings
@@ -39,19 +40,24 @@ def create_backup(con, auto: bool = False) -> dict:
     files = 0
     with tempfile.TemporaryDirectory() as tmp:
         snap = Path(tmp) / "gooya_asset.db"
-        dest = sqlite3.connect(snap)
-        try:
-            con.backup(dest)  # online, consistent copy (safe while the app is in use)
-        finally:
-            dest.close()
+        if not db.is_pg():
+            dest = sqlite3.connect(snap)
+            try:
+                con.backup(dest)  # online, consistent copy (safe while the app is in use)
+            finally:
+                dest.close()
         try:
             with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
-                z.write(snap, "gooya_asset.db")
+                if db.is_pg():   # every table as JSON: restores into PostgreSQL or SQLite (tools/restore_backup.py)
+                    _write_dump(con, z)
+                else:
+                    z.write(snap, "gooya_asset.db")
                 for p in sorted(att_root.rglob("*")):
                     if p.is_file():
                         z.write(p, "attachments/" + p.relative_to(att_root).as_posix())
                         files += 1
                 z.writestr("manifest.json", json.dumps({"created": now(), "user": actor(), "attachments": files,
+                                                        "database": "postgresql" if db.is_pg() else "sqlite", "format": db.DUMP_FORMAT if db.is_pg() else "sqlite",
                                                         "attachment_root": str(att_root), "app": "Usool"}, indent=2))
         except Exception:
             target.unlink(missing_ok=True)
@@ -59,6 +65,23 @@ def create_backup(con, auto: bool = False) -> dict:
     audit(con, "AUTO BACKUP" if auto else "BACKUP", "backup", name, f"{files} attachment file(s)")
     con.commit()
     return {"name": name, "size": target.stat().st_size, "attachments": files, "folder": str(root)}
+
+
+def _write_dump(con, z) -> None:
+    """usool-data.json: {format, tables: {table: {columns, rows}}}, written table by table."""
+    import json
+    with z.open("usool-data.json", "w") as f:
+        f.write(f'{{"format": "{db.DUMP_FORMAT}", "tables": {{'.encode())
+        for i, t in enumerate(db.TABLES):
+            cols, batches = db.dump_rows(con, t)
+            f.write(f'{"," if i else ""}{json.dumps(t)}: {{"columns": {json.dumps(cols)}, "rows": ['.encode())
+            first = True
+            for batch in batches:
+                for r in batch:
+                    f.write(((b"" if first else b",") + json.dumps(r, ensure_ascii=False, default=str).encode()))
+                    first = False
+            f.write(b"]}")
+        f.write(b"}}")
 
 
 def list_backups(con) -> dict:

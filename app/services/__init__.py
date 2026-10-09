@@ -3,8 +3,11 @@ from __future__ import annotations
 
 from .. import db  # tests point services.db at a temporary folder
 from .common import (
-    ASSET_STATUSES, ApiError, MONTHS_AR, USER, _ctx, actor, audit, localize, month_ar, now, num, one, parse_date, r2, rows, set_actor, set_lang, to_int,
+    ASSET_STATUSES, ApiError, MONTHS_AR, USER, _ctx, actor, audit, in_scope, localize, month_ar, now, num, one, parse_date, r2, rows, scope, scope_sql,
+    set_actor, set_lang, set_scope, to_int,
 )
+from .book import values as book_values
+from .branches import apply_scope, branch_tree, countries, set_user_branches, user_branches
 from .settings import (
     _master, get_settings, lookups, master_delete, master_list, master_save, save_settings,
 )
@@ -15,10 +18,13 @@ from .assets import (
     ASSET_FIELDS, BOOK_SQL, _clean_asset, _with_nbv, change_status, delete_asset, get_asset, list_assets, next_asset_code, save_asset, transfer_asset,
 )
 from .depreciation import (
-    _fully_depreciated, _month_index, _sequence_ok, discard_drafts, draft_lines, post_depreciation, propose, run_depreciation, suggest_period,
+    DEPRECIATING, _fully_depreciated, _month_index, _sequence_ok, monthly_charge, discard_drafts, draft_lines, post_depreciation, propose, run_depreciation, suggest_period,
 )
 from .disposal import (
     dispose_asset,
+)
+from .valuation import (
+    add_capital, revalue,
 )
 from .files import _attach_root, _remove_file
 from .attachments import (
@@ -28,7 +34,7 @@ from .inquiries import (
     audit_log, journal, transactions,
 )
 from .dashboard import (
-    dashboard,
+    attention, dashboard, failed_checks,
 )
 from .maintenance import (
     MAINT_PRIORITIES, MAINT_SQL, MAINT_STATUSES, MAINT_TYPES, _clean_maint, _maint_flags, _next_maint_no, _release_asset, _set_asset_status, _vendor, delete_maintenance, get_maintenance, list_maintenance, maintenance_action, save_maintenance,
@@ -42,11 +48,19 @@ from .backup import (
 from .employees import (
     EMPLOYEE_FIELDS, EMPLOYEE_LIST_SQL, delete_employee, get_employee, list_employees, next_employee_code, save_employee,
 )
+from .integrity import (
+    run_checks,
+)
+from .counts import (
+    close_count, create_count, delete_count, get_count, list_counts, scan, unscan,
+)
 from .custody import (
     CUSTODY_SQL, _next_custody_no, add_custody_attachment, delete_custody, get_custody, issue_custody, list_custody, return_custody, update_custody,
 )
 
 __all__ = [
+    "add_capital", "revalue", "book_values", "monthly_charge", "DEPRECIATING", "in_scope", "scope", "scope_sql", "set_scope",
+    "apply_scope", "branch_tree", "countries", "set_user_branches", "user_branches",
     "ASSET_STATUSES",
     "ApiError",
     "MONTHS_AR",
@@ -104,7 +118,9 @@ __all__ = [
     "audit_log",
     "journal",
     "transactions",
+    "attention",
     "dashboard",
+    "failed_checks",
     "MAINT_PRIORITIES",
     "MAINT_SQL",
     "MAINT_STATUSES",
@@ -155,5 +171,7 @@ __all__ = [
     "list_custody",
     "return_custody",
     "update_custody",
+    "run_checks",
+    "close_count", "create_count", "delete_count", "get_count", "list_counts", "scan", "unscan",
     "db",
 ]

@@ -4,23 +4,34 @@ from __future__ import annotations
 from datetime import date
 
 from .assets import list_assets
-from .common import _ctx, month_ar, one, r2, rows
+from .common import _ctx, month_ar, one, r2, rows, scope_sql
 from .maintenance import MAINT_SQL, _maint_flags
 from .periods import period_for_date
 from .settings import get_settings
 
 def dashboard(con) -> dict:
     assets = [a for a in list_assets(con) if a["AssetStatus"] != "Disposed"]
-    cost = sum(a["AcquisitionCost"] for a in assets)
+    cost = sum(a["Cost"] for a in assets)
     acc = sum(a["AccumDep"] for a in assets)
+    adj = sum(a["ValueAdj"] for a in assets)
+    sc = scope_sql("A")
     by_cat: dict[str, dict] = {}
+    by_branch: dict = {}
+    by_country: dict = {}
     for a in assets:
-        c = by_cat.setdefault(a["CategoryName"] or "-", {"name": a["CategoryName"] or "-", "cost": 0, "nbv": 0, "count": 0})
-        c["cost"] += a["AcquisitionCost"]; c["nbv"] += a["NBV"]; c["count"] += 1
+        if a.get("BranchID"):
+            g = by_branch.setdefault(a["BranchID"], {"id": a["BranchID"], "code": a["BranchCode"], "name": a["BranchName"], "country": a["CountryCode"], "cost": 0, "nbv": 0, "count": 0})
+            g["cost"] += a["Cost"]; g["nbv"] += a["NBV"]; g["count"] += 1
+            g = by_country.setdefault(a["CountryCode"], {"id": a["CountryCode"], "name": a["CountryCode"], "cost": 0, "nbv": 0, "count": 0})
+            g["cost"] += a["Cost"]; g["nbv"] += a["NBV"]; g["count"] += 1
+    for a in assets:
+        c = by_cat.setdefault(a["CategoryName"] or "-", {"id": a["CategoryID"], "name": a["CategoryName"] or "-", "cost": 0, "nbv": 0, "count": 0})
+        c["cost"] += a["Cost"]; c["nbv"] += a["NBV"]; c["count"] += 1
     today = date.today().isoformat()
     cur = period_for_date(con, today)
-    by_year = rows(con, """SELECT P.FiscalYear y, P.PeriodNumber n, P.PeriodName name, SUM(D.PeriodDepreciation) amt
-        FROM tbl_Depreciation D JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID WHERE D.PostingStatus='POSTED'
+    by_year = rows(con, f"""SELECT P.FiscalYear y, P.PeriodNumber n, P.PeriodName name, SUM(D.PeriodDepreciation) amt
+        FROM tbl_Depreciation D JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID JOIN tbl_Assets A ON A.AssetID=D.AssetID
+        WHERE D.PostingStatus='POSTED'{sc}
         GROUP BY P.PeriodID ORDER BY P.StartDate DESC LIMIT 12""")[::-1]
     if getattr(_ctx, "lang", "en") == "ar":
         for r_ in by_year:
@@ -28,21 +39,120 @@ def dashboard(con) -> dict:
     open_p = one(con, """SELECT P.* FROM tbl_DepreciationPeriods P WHERE P.PeriodStatus='OPEN' AND NOT EXISTS
         (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='POSTED')
         ORDER BY P.StartDate LIMIT 1""")
-    warranty = rows(con, """SELECT AssetID,AssetCode,AssetName,AssetNameAr,WarrantyExpiryDate FROM tbl_Assets WHERE AssetStatus<>'Disposed'
-        AND WarrantyExpiryDate IS NOT NULL AND WarrantyExpiryDate BETWEEN ? AND date(?,'+90 day') ORDER BY WarrantyExpiryDate""", (today, today))
+    warranty = rows(con, f"""SELECT AssetID,AssetCode,AssetName,AssetNameAr,WarrantyExpiryDate FROM tbl_Assets A WHERE AssetStatus<>'Disposed'
+        AND WarrantyExpiryDate IS NOT NULL AND WarrantyExpiryDate BETWEEN ? AND ?{sc} ORDER BY WarrantyExpiryDate""", (today, date.fromordinal(date.today().toordinal() + 90).isoformat()))
     return {
-        "asset_count": len(assets), "cost": r2(cost), "accum_dep": r2(acc), "nbv": r2(cost - acc),
+        "asset_count": len(assets), "cost": r2(cost), "accum_dep": r2(acc), "value_adj": r2(adj), "nbv": r2(cost - acc + adj),
+        "branches": len({a["BranchID"] for a in assets if a.get("BranchID")}),
         "by_category": sorted(by_cat.values(), key=lambda c: -c["cost"]),
+        "by_branch": sorted(by_branch.values(), key=lambda c: -c["cost"]),
+        "by_country": sorted(by_country.values(), key=lambda c: -c["cost"]),
         "dep_trend": by_year,
         "next_period": open_p, "current_period": cur,
-        "draft_lines": one(con, "SELECT COUNT(*) n FROM tbl_Depreciation WHERE PostingStatus='DRAFT'")["n"],
-        "status_counts": rows(con, "SELECT AssetStatus s, COUNT(*) n FROM tbl_Assets GROUP BY AssetStatus"),
+        "draft_lines": one(con, f"SELECT COUNT(*) n FROM tbl_Depreciation D JOIN tbl_Assets A ON A.AssetID=D.AssetID WHERE D.PostingStatus='DRAFT'{sc}")["n"],
+        "status_counts": rows(con, f"SELECT AssetStatus s, COUNT(*) n FROM tbl_Assets A WHERE 1=1{sc} GROUP BY AssetStatus"),
         "warranty": warranty,
-        "recent": rows(con, """SELECT T.*, A.AssetCode, A.AssetName, A.AssetNameAr FROM tbl_AssetTransactions T JOIN tbl_Assets A ON A.AssetID=T.AssetID
-                               ORDER BY T.TransactionID DESC LIMIT 8"""),
+        "recent": rows(con, f"""SELECT T.*, A.AssetCode, A.AssetName, A.AssetNameAr FROM tbl_AssetTransactions T JOIN tbl_Assets A ON A.AssetID=T.AssetID
+                               WHERE 1=1{sc} ORDER BY T.TransactionID DESC LIMIT 8"""),
         "currency": get_settings(con).get("DefaultCurrency") or "SAR",
-        "custody_held": one(con, "SELECT COUNT(*) n FROM tbl_AssetCustody WHERE Status='Issued'")["n"],
-        "maint_open": one(con, "SELECT COUNT(*) n FROM tbl_Maintenance WHERE Status IN ('Planned','In Progress')")["n"],
-        "maint_overdue": one(con, "SELECT COUNT(*) n FROM tbl_Maintenance WHERE Status IN ('Planned','In Progress') AND ScheduledDate<?", (today,))["n"],
-        "maint_due": [_maint_flags(m) for m in rows(con, MAINT_SQL + " WHERE M.Status IN ('Planned','In Progress') ORDER BY M.ScheduledDate LIMIT 6")],
+        "custody_held": one(con, f"SELECT COUNT(*) n FROM tbl_AssetCustody U JOIN tbl_Assets A ON A.AssetID=U.AssetID WHERE U.Status='Issued'{sc}")["n"],
+        "maint_open": one(con, f"SELECT COUNT(*) n FROM tbl_Maintenance M JOIN tbl_Assets A ON A.AssetID=M.AssetID WHERE M.Status IN ('Planned','In Progress'){sc}")["n"],
+        "maint_overdue": one(con, f"SELECT COUNT(*) n FROM tbl_Maintenance M JOIN tbl_Assets A ON A.AssetID=M.AssetID WHERE M.Status IN ('Planned','In Progress') AND M.ScheduledDate<?{sc}", (today,))["n"],
+        "maint_due": [_maint_flags(m) for m in rows(con, MAINT_SQL + f" WHERE M.Status IN ('Planned','In Progress'){sc} ORDER BY M.ScheduledDate LIMIT 8")],
+        "custody_list": rows(con, f"""SELECT U.CustodyID, U.CustodyNo, U.IssueDate, U.AssetID, A.AssetCode, A.AssetName, A.AssetNameAr, E.EmployeeName, E.EmployeeNameAr,
+            (SELECT COUNT(*) FROM tbl_AssetAttachments T WHERE T.CustodyID=U.CustodyID) AS AttachmentCount
+            FROM tbl_AssetCustody U JOIN tbl_Assets A ON A.AssetID=U.AssetID JOIN tbl_Employees E ON E.EmployeeID=U.EmployeeID
+            WHERE U.Status='Issued'{sc} ORDER BY U.IssueDate DESC, U.CustodyID DESC LIMIT 8"""),
+        "custody_unsigned": one(con, f"""SELECT COUNT(*) n FROM tbl_AssetCustody U JOIN tbl_Assets A ON A.AssetID=U.AssetID WHERE U.Status='Issued'
+            AND NOT EXISTS (SELECT 1 FROM tbl_AssetAttachments T WHERE T.CustodyID=U.CustodyID){sc}""")["n"],
+        "under_repair": sum(1 for a in assets if a["AssetStatus"] == "Under Repair"),
+        "no_location": sum(1 for a in assets if not a["LocationID"]),
+        "missing_opening": _missing_opening(con),
+        "cycle": _cycle(con, open_p, today),
+        **_year_to_date(con, cur),
     }
+
+
+def _year_to_date(con, cur: dict | None) -> dict:
+    """Depreciation posted in the fiscal year of today's period, and the last period posted."""
+    fy = cur["FiscalYear"] if cur else None
+    ytd = one(con, f"""SELECT COALESCE(SUM(D.PeriodDepreciation),0) s FROM tbl_Depreciation D JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID
+        JOIN tbl_Assets A ON A.AssetID=D.AssetID WHERE D.PostingStatus='POSTED' AND P.FiscalYear=?{scope_sql("A")}""", (fy,))["s"] if fy else 0
+    last = one(con, """SELECT P.PeriodName, P.EndDate FROM tbl_Depreciation D JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID
+        WHERE D.PostingStatus='POSTED' ORDER BY P.StartDate DESC LIMIT 1""")
+    return {"fiscal_year": fy, "dep_ytd": r2(ytd), "last_posted": last}
+
+
+def _missing_opening(con) -> list[dict]:
+    """Assets that started depreciating before the first period but carry no opening accumulated depreciation."""
+    first = one(con, "SELECT MIN(StartDate) s FROM tbl_DepreciationPeriods", raw=True)["s"]
+    if not first:
+        return []
+    return rows(con, f"""SELECT A.AssetID, A.AssetCode, A.AssetName, A.AssetNameAr FROM tbl_Assets A
+        JOIN tbl_DepreciationMethods M ON M.MethodID=A.MethodID
+        WHERE A.AssetStatus<>'Disposed' AND M.MethodCode IN ('SL','DB') AND COALESCE(A.OpeningAccumDep,0)=0
+          AND substr(COALESCE(A.DepreciationStartDate, A.InServiceDate, A.AcquisitionDate),1,7) < substr(?,1,7)
+          AND NOT EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.AssetID=A.AssetID AND D.PostingStatus='POSTED'){scope_sql("A")}
+        ORDER BY A.AssetCode""", (first,))
+
+
+def _cycle(con, next_p: dict | None, today: str) -> dict:
+    """Where the monthly depreciation cycle stands: the period to work on, its drafts, months behind, periods ready to close."""
+    month_start = today[:8] + "01"
+    out = {"period": next_p, "drafts": 0, "behind": 0, "closable": []}
+    if next_p:
+        out["drafts"] = one(con, f"""SELECT COUNT(*) n FROM tbl_Depreciation D JOIN tbl_Assets A ON A.AssetID=D.AssetID
+            WHERE D.PeriodID=? AND D.PostingStatus='DRAFT'{scope_sql("A")}""", (next_p["PeriodID"],))["n"]
+        out["behind"] = one(con, "SELECT COUNT(*) n FROM tbl_DepreciationPeriods WHERE StartDate>=? AND EndDate<?", (next_p["StartDate"], month_start))["n"]
+    # past open periods that are fully posted (something posted, no drafts left) can be closed
+    out["closable"] = rows(con, """SELECT P.PeriodID, P.PeriodName FROM tbl_DepreciationPeriods P WHERE P.PeriodStatus='OPEN' AND P.EndDate<?
+        AND EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='POSTED')
+        AND NOT EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='DRAFT')
+        AND P.StartDate<? ORDER BY P.StartDate""", (month_start, next_p["StartDate"] if next_p else "9999-12-31"))
+    return out
+
+
+# ---------------------------------------------------------------- what needs attention (built here, shown by the workspace)
+_checks_cache: dict = {"key": None, "failed": []}
+
+
+def failed_checks(con) -> list[dict]:
+    """Integrity checks that fail; recomputed only when the data changed (every change writes the audit log)."""
+    from .integrity import run_checks
+    key = tuple(con.execute("SELECT (SELECT COALESCE(MAX(LogID),0) FROM tbl_AuditLog), (SELECT COUNT(*) FROM tbl_DepreciationJournal)").fetchone()) + (date.today(),)
+    if _checks_cache["key"] != key:
+        _checks_cache.update(key=key, failed=[c for c in run_checks(con) if not c["ok"]])
+    return _checks_cache["failed"]
+
+
+def attention(con, d: dict) -> list[dict]:
+    """Everything with a next step, most urgent first: {severity, text (English template), args, detail, href, action, perm}.
+    The workspace translates and lists them; the API leaves out what the user may not act on or see."""
+    items: list[dict] = []
+    add = lambda severity, text, args, href, action, perm, detail="": items.append(
+        {"severity": severity, "text": text, "args": args, "detail": detail, "href": href, "action": action, "perm": perm})
+    cyc = d["cycle"]
+    failed = failed_checks(con)
+    if failed:
+        add("err", "{0} data check(s) failed", [len(failed)], "#/integrity", "Review", "reports.view")
+    if cyc["behind"] > 1:
+        add("err", "Depreciation is {0} months behind", [cyc["behind"]], f"#/depreciation?period={cyc['period']['PeriodID']}", "Run", "depreciation.run",
+            cyc["period"]["PeriodName"])
+    if d["draft_lines"]:
+        add("warn", "{0} depreciation line(s) waiting to be posted", [d["draft_lines"]], "#/depreciation", "Review", "depreciation.post")
+    if d["maint_overdue"]:
+        add("err", "{0} maintenance order(s) overdue", [d["maint_overdue"]], "#/maintenance?status=Open", "Open", "maintenance.view")
+    for a in d["missing_opening"]:
+        add("warn", "{0}: enter the opening accumulated depreciation", [f"{a['AssetCode']} · {a['AssetName']}"], f"#/assets/{a['AssetID']}", "Fix", "assets.edit",
+            "Started before the first period")
+    if cyc["closable"]:
+        add("info", "{0} period(s) fully posted and ready to close", [len(cyc["closable"])], "#/periods", "Close", "periods.manage",
+            ", ".join(p["PeriodName"] for p in cyc["closable"]))
+    if d["custody_unsigned"]:
+        add("info", "{0} custody record(s) without a signed form", [d["custody_unsigned"]], "#/custody?status=Issued", "Attach", "custody.manage")
+    soon = [w for w in d["warranty"] if w["WarrantyExpiryDate"] <= date.fromordinal(date.today().toordinal() + 30).isoformat()]
+    if soon:
+        add("info", "{0} warranty(ies) expire within 30 days", [len(soon)], "#/reports/warranty-expiry", "View", "reports.view", ", ".join(w["AssetCode"] for w in soon))
+    if d["no_location"]:
+        add("info", "{0} asset(s) without a location", [d["no_location"]], "#/assets", "Open", "assets.view")
+    return items

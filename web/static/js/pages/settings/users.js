@@ -1,14 +1,50 @@
-import { api } from "../../core/api.js";
-import { t } from "../../core/i18n.js";
-import { DataGrid, Form, clear, confirmDialog, fail, guard, h, icon, page, pill, ribbon, toast } from "../../ui/index.js";
+import { api, lookups } from "../../core/api.js";
+import { getLang, t } from "../../core/i18n.js";
+import { DataGrid, Form, clear, confirmDialog, fail, fold, guard, h, icon, nm, page, pill, ribbon, toast } from "../../ui/index.js";
 import { roleTitle } from "../../core/session.js";
 const userState = (u) => (u.IsLocked ? pill("Locked", "err") : pill(u.IsActive ? "Active" : "Inactive"));
+/** Which branches a user works in: ticked branches, grouped by country; none ticked = every branch. */
+function branchChecklist(L, chosen) {
+    const on = new Set(chosen);
+    const q = h("input", { class: "gt-input", type: "search", placeholder: t("Find a branch…"), "aria-label": t("Find a branch"), style: "max-width:none;width:100%" });
+    const list = h("div", { class: "br-list" });
+    const note = h("p", { class: "br-note" });
+    const cn = (code) => { const c = L.countries.find((x) => x.code === code); return c ? (getLang() === "ar" ? c.nameAr : c.name) : code; };
+    const sync = () => { note.textContent = on.size ? t("Works in {0} branch(es) only.", on.size) : t("No branch ticked: the user works in every branch."); };
+    const draw = () => {
+        clear(list);
+        const k = fold(q.value);
+        const byCountry = new Map();
+        for (const b of L.branches)
+            if (!k || fold(`${b.BranchCode} ${b.BranchName} ${b.BranchNameAr || ""} ${cn(b.CountryCode)}`).includes(k))
+                byCountry.set(b.CountryCode, [...(byCountry.get(b.CountryCode) || []), b]);
+        for (const [code, bs] of byCountry) {
+            const all = h("input", { type: "checkbox" });
+            const refresh = () => { const n = bs.filter((b) => on.has(b.BranchID)).length; all.checked = n === bs.length; all.indeterminate = n > 0 && n < bs.length; };
+            all.addEventListener("change", () => { bs.forEach((b) => (all.checked ? on.add(b.BranchID) : on.delete(b.BranchID))); draw(); sync(); });
+            list.append(h("label", { class: "perm-head" }, all, h("b", null, cn(code))));
+            for (const b of bs) {
+                const box = h("input", { type: "checkbox" });
+                box.checked = on.has(b.BranchID);
+                box.addEventListener("change", () => { box.checked ? on.add(b.BranchID) : on.delete(b.BranchID); refresh(); sync(); });
+                list.append(h("label", { class: "perm" }, box, h("span", null, `${b.BranchCode} — ${nm(b, "BranchName")}`)));
+            }
+            refresh();
+        }
+    };
+    q.addEventListener("input", draw);
+    draw();
+    sync();
+    return { el: h("div", { class: "br-pick" }, h("h2", { class: "sec" }, t("Branches")), note, q, list), get: () => [...on] };
+}
 // ================================================================ users
 export async function usersPage(root, _a) {
     let roles = await api.get("/api/roles");
+    const L = await lookups(true);
     const cols = [
         { key: "UserName", label: "User name", width: 130 }, { key: "FullName", label: "Full name", render: (r) => (r.FullNameAr && document.documentElement.lang === "ar" ? r.FullNameAr : r.FullName) },
         { key: "RoleName", label: "Role", render: (r) => roleTitle(r) }, { key: "Status", label: "Status", render: userState },
+        { key: "Branches", label: "Branches", render: (r) => (r.BranchCount ? t("{0} branch(es)", r.BranchCount) : t("All branches")) },
         { key: "Email", label: "Email" }, { key: "LastLogin", label: "Last sign-in", render: (r) => (r.LastLogin ? String(r.LastLogin).slice(0, 16) : "—") },
     ];
     const grid = new DataGrid({ columns: cols, rows: [], exportName: "users", limit: 1000, onOpen: (r) => edit(r) });
@@ -33,6 +69,7 @@ export async function usersPage(root, _a) {
             { name: "MustChangePassword", label: "Must change password at next sign-in", type: "checkbox" }, { name: "IsActive", label: "Active", type: "checkbox" },
         ];
         const form = new Form(defs, rec ? { ...rec, Password: "", ConfirmPassword: "" } : { IsActive: true, MustChangePassword: true, RoleID: roles.find((r) => r.RoleName === "Viewer")?.RoleID });
+        const branches = L.branches.length ? branchChecklist(L, rec?.Branches || []) : null;
         const save = guard(async () => {
             if (!form.validate())
                 return;
@@ -44,6 +81,8 @@ export async function usersPage(root, _a) {
             if (!body.Password)
                 delete body.Password;
             delete body.ConfirmPassword;
+            if (branches)
+                body.Branches = branches.get();
             if (rec)
                 await api.put(`/api/users/${rec.UserID}`, body);
             else
@@ -52,7 +91,7 @@ export async function usersPage(root, _a) {
             closePanel();
             await load();
         });
-        panel = h("aside", { class: "side-panel inline", role: "dialog" }, h("header", null, h("span", null, rec ? `${t("Edit")} · ${rec.UserName}` : t("New user")), h("button", { class: "tb-btn", style: "color:var(--ink);height:28px", onclick: closePanel, "aria-label": t("Close") }, icon("x"))), h("div", { class: "dbody" }, form.el), h("footer", null, h("button", { class: "btn primary", onclick: save }, t("Save")), h("button", { class: "btn", onclick: closePanel }, t("Cancel"))));
+        panel = h("aside", { class: "side-panel inline", role: "dialog" }, h("header", null, h("span", null, rec ? `${t("Edit")} · ${rec.UserName}` : t("New user")), h("button", { class: "tb-btn", style: "color:var(--ink);height:28px", onclick: closePanel, "aria-label": t("Close") }, icon("x"))), h("div", { class: "dbody" }, form.el, branches?.el ?? ""), h("footer", null, h("button", { class: "btn primary", onclick: save }, t("Save")), h("button", { class: "btn", onclick: closePanel }, t("Cancel"))));
         holder.append(panel);
         form.el.querySelector("input,select")?.focus();
     }

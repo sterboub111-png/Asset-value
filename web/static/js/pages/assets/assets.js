@@ -2,10 +2,11 @@ import { api, lookups } from "../../core/api.js";
 import { addSupplierShortcut, supplierOptions } from "../contacts/suppliers.js";
 import { can } from "../../core/session.js";
 import { custodyGrid, issueDialog } from "../contacts/custody.js";
+import { blankZeros, entryDialog, ledgerCols } from "./ledger.js";
 import { t } from "../../core/i18n.js";
-import { DataGrid, Form, nm, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtDate, fmtMoney, guard, h, opts, page, pill, ribbon, toast, today, } from "../../ui/index.js";
+import { DataGrid, Form, codeLabel, combo, nm, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtDate, fmtMoney, guard, h, opts, page, pill, ribbon, toast, today, } from "../../ui/index.js";
 // ================================================================ list
-export async function assetsListPage(root, _a) {
+export async function assetsListPage(root, a) {
     const L = await lookups();
     let assets = [];
     const cols = [
@@ -13,19 +14,22 @@ export async function assetsListPage(root, _a) {
         { key: "AssetName", label: "Name", width: 180 },
         { key: "CategoryName", label: "Group" },
         { key: "AssetStatus", label: "Status", type: "status" },
-        { key: "CustodianName", label: "Held by" },
-        { key: "VatApplicable", label: "VAT", render: (r) => (r.VatApplicable ? t("With VAT") : t("No VAT")) },
+        { key: "CustodianName", label: "Held by", hidden: true },
+        { key: "VatApplicable", label: "VAT", hidden: true, render: (r) => (r.VatApplicable ? t("With VAT") : t("No VAT")) },
         { key: "AcquisitionDate", label: "Acquired", type: "date" },
+        ...(L.branches.length ? [{ key: "BranchCode", label: "Branch", render: (r) => h("span", { title: nm(r, "BranchName") || "" }, r.BranchCode || "") }] : []),
         { key: "LocationName", label: "Location" },
-        { key: "CostCenterName", label: "Cost center" },
-        { key: "AcquisitionCost", label: "Cost", type: "money" },
-        { key: "AccumDep", label: "Accum. depreciation", type: "money" },
+        { key: "CostCenterName", label: "Cost center", hidden: true },
+        { key: "Cost", label: "Cost", type: "money" },
+        { key: "AccumDep", label: "Accum. dep.", type: "money" },
+        { key: "ValueAdj", label: "Revaluation / (impairment)", type: "money", hidden: true },
         { key: "NBV", label: "Net book value", type: "money" },
     ];
-    const statusSel = h("select", { class: "gt-input", style: "width:170px", "aria-label": t("Status") }, h("option", { value: "" }, t("All statuses")), ...[...L.statuses, "Disposed"].map((s) => h("option", { value: s }, t(s))));
-    const catSel = h("select", { class: "gt-input", style: "width:200px", "aria-label": t("Group") }, h("option", { value: "" }, t("All groups")), ...L.categories.map((c) => h("option", { value: c.CategoryID }, nm(c, "CategoryName"))));
-    const grid = new DataGrid({ columns: cols, rows: [], totals: ["AcquisitionCost", "AccumDep", "NBV"], exportName: "fixed-assets",
-        tools: [statusSel, catSel], onOpen: (r) => (location.hash = `#/assets/${r.AssetID}`), empty: "No fixed assets match the filter." });
+    const statusSel = combo([...L.statuses, "Disposed"].map((s) => ({ value: s, label: t(s) })), { placeholder: t("All statuses"), label: t("Status"), width: 170 });
+    const catSel = combo(L.categories.map((c) => ({ value: c.CategoryID, label: `${c.CategoryCode} — ${nm(c, "CategoryName")}` })), { placeholder: t("All groups"), label: t("Group"), width: 230 });
+    const details = detailsPane();
+    const grid = new DataGrid({ columns: cols, rows: [], totals: ["Cost", "AccumDep", "ValueAdj", "NBV"], exportName: "fixed-assets",
+        tools: [statusSel, catSel], onOpen: (r) => (location.hash = `#/assets/${r.AssetID}`), onSelect: (r) => details.show(r), empty: "No fixed assets match the filter." });
     const load = async () => {
         try {
             assets = await api.get(`/api/assets?status=${encodeURIComponent(statusSel.value)}&category=${catSel.value}`);
@@ -35,6 +39,8 @@ export async function assetsListPage(root, _a) {
             fail(e);
         }
     };
+    statusSel.value = a.query.get("status") ?? ""; // links from the workspace open the list already filtered
+    catSel.value = a.query.get("category") ?? "";
     statusSel.onchange = catSel.onchange = load;
     const open = () => { const r = grid.selected(); if (r)
         location.hash = `#/assets/${r.AssetID}`;
@@ -43,11 +49,59 @@ export async function assetsListPage(root, _a) {
     const rb = ribbon([[
             { perm: "assets.edit", label: t("New"), icon: "plus", primary: true, onClick: () => (location.hash = "#/assets/new") },
             { label: t("Edit"), icon: "edit", onClick: open },
-        ], [{ label: t("Refresh"), icon: "refresh", onClick: load }]], [t("Fixed assets"), t("View")]);
-    const pg = page({ title: t("All fixed assets"), subtitle: t("Fixed assets"), ribbon: rb.el }, grid.el);
-    clear(root);
-    root.append(pg.el);
+            { perm: "assets.edit", label: t("Import from Excel"), icon: "download", onClick: () => (location.hash = "#/assets/import") },
+        ], [{ label: t("Ledger entries"), icon: "journal", onClick: () => { const r = grid.selected(); location.hash = r ? `#/ledger?asset=${r.AssetID}` : "#/ledger"; } },
+            { label: t("Details pane"), icon: "columns", active: details.on(), onClick: () => { details.toggle(); render(); } },
+            { label: t("Refresh"), icon: "refresh", onClick: load }]], [t("Fixed assets"), t("View")]);
+    const render = () => {
+        const pg = page({ title: t("All fixed assets"), subtitle: t("Fixed assets"), ribbon: rb.el, factbox: details.on() ? details.el : undefined }, grid.el);
+        clear(root);
+        root.append(pg.el);
+        rb.el.querySelectorAll(".rb").forEach((b) => { if (b.textContent === t("Details pane"))
+            b.classList.toggle("active", details.on()); });
+    };
+    render();
     await load();
+}
+/** The FactBox of the list (Business Central style): the selected asset's book value, whereabouts and latest entries. */
+function detailsPane() {
+    const KEY = "usool.assets.details";
+    let visible = (() => { try {
+        return localStorage.getItem(KEY) !== "0";
+    }
+    catch {
+        return true;
+    } })();
+    const el = h("div", { class: "ad" });
+    let token = 0;
+    const kv = (k, v, cls = "") => h("div", { class: cls }, h("span", { class: "k" }, t(k)), h("span", { class: "v" }, v));
+    const empty = () => { clear(el); el.append(h("div", { class: "fb" }, h("h4", null, t("Details")), h("div", { class: "kv lg-empty" }, t("Select an asset to see its details here.")))); };
+    const show = async (r) => {
+        const my = ++token;
+        if (!r) {
+            empty();
+            return;
+        }
+        clear(el);
+        el.append(h("div", { class: "fb" }, h("h4", null, h("a", { href: `#/assets/${r.AssetID}` }, `${r.AssetCode} · ${nm(r, "AssetName")}`)), h("div", { class: "kv" }, kv("Status", pill(r.AssetStatus)), kv("Group", nm(r, "CategoryName") || "—"), r.BranchCode ? kv("Branch", `${r.BranchCode} · ${nm(r, "BranchName")}`) : null, kv("Location", nm(r, "LocationName") || "—"), r.CustodianName !== undefined ? kv("Held by", nm(r, "CustodianName") || "—") : null)), h("div", { class: "fb" }, h("h4", null, t("Book value")), h("div", { class: "kv" }, kv("Cost", fmtMoney(r.Cost)), kv("Accumulated depreciation", fmtMoney(r.AccumDep)), r.ValueAdj ? kv("Revaluation / (impairment)", fmtMoney(r.ValueAdj)) : null, h("hr"), kv("Net book value", fmtMoney(r.NBV), "big"))));
+        const recent = h("div", { class: "fb" }, h("h4", null, t("Latest entries")), h("div", { class: "kv lg-empty" }, t("Loading…")));
+        el.append(recent);
+        try {
+            const res = await api.get(`/api/ledger?asset=${r.AssetID}&limit=5000`);
+            if (my !== token)
+                return;
+            const last = res.rows.slice(-6).reverse();
+            recent.lastElementChild.replaceWith(h("div", { class: "ad-entries" }, ...last.map((x) => h("button", { class: "ad-entry", type: "button", onclick: () => void entryDialog(x) }, h("span", null, h("b", null, codeLabel(x.EntryType)), h("small", null, `${x.Document} · ${fmtDate(x.EntryDate)}`)), h("span", { class: "num" }, x.NBVChange ? fmtMoney(x.NBVChange) : ""))), h("a", { class: "ad-all", href: `#/ledger?asset=${r.AssetID}` }, t("All ledger entries"))));
+        }
+        catch {
+            recent.remove();
+        }
+    };
+    empty();
+    return { el, show: (r) => void show(r), on: () => visible, toggle: () => { visible = !visible; try {
+            localStorage.setItem(KEY, visible ? "1" : "0");
+        }
+        catch { /* ignore */ } } };
 }
 // ================================================================ form
 const money2 = (v) => fmtMoney(v);
@@ -115,7 +169,7 @@ export async function assetFormPage(root, a) {
         ];
     }
     const cost = [
-        { name: "AcquisitionDate", label: "Acquisition date", type: "date", required: true },
+        { name: "AcquisitionDate", label: "Acquisition date", type: "date", required: true, readonly: locked },
         ...(vatOn ? vatFields() : [{ name: "PurchaseAmount", label: "Acquisition cost", type: "number", step: "0.01", required: true, readonly: locked, onChange: (_v, f) => recalcVat(f) }]),
         { name: "ResidualValue", label: "Residual (salvage) value", type: "number", step: "0.01", readonly: locked },
         { name: "InServiceDate", label: "In-service date", type: "date", readonly: locked, onChange: (val, f) => { if (!f.value("DepreciationStartDate") || lastStart === f.value("DepreciationStartDate")) {
@@ -126,11 +180,10 @@ export async function assetFormPage(root, a) {
         { name: "OpeningAccumDep", label: "Opening accumulated depreciation", type: "number", step: "0.01", readonly: locked, hint: "Only for assets brought in with prior depreciation." },
     ];
     const dep = [
-        { name: "MethodID", label: "Depreciation method", type: "select", options: methOpts, readonly: locked },
-        { name: "UsefulLifeYears", label: "Useful life (years)", type: "number", step: "0.01", readonly: locked,
-            onChange: (val, f) => { const n = Number(val); if (n > 0)
-                f.set("DepreciationRate", Math.round((100 / n) * 10000) / 10000); } },
-        { name: "DepreciationRate", label: "Annual rate (%)", type: "number", step: "0.01", readonly: locked },
+        { name: "MethodID", label: "Depreciation method", type: "select", options: methOpts, readonly: locked, onChange: (_v, f) => defaultRate(f) },
+        { name: "UsefulLifeYears", label: "Useful life (years)", type: "number", step: "0.01", readonly: locked, onChange: (_v, f) => defaultRate(f) },
+        { name: "DepreciationRate", label: "Annual rate (%)", type: "number", step: "0.01", readonly: locked,
+            hint: "Straight line: 100 / life. Declining balance: double that by default (switches to straight line when that gives more)." },
     ];
     const place = [
         { name: "LocationID", label: "Location", type: "select", options: locOpts, readonly: !isNew },
@@ -144,6 +197,13 @@ export async function assetFormPage(root, a) {
     const ident = [{ name: "Manufacturer", label: "Manufacturer" }, { name: "ModelNumber", label: "Model" }, { name: "SerialNumber", label: "Serial number" }];
     const notes = [{ name: "Notes", label: "Notes", type: "textarea", wide: true }];
     let lastStart = v.DepreciationStartDate || v.InServiceDate || "";
+    /** Straight line: 100 / life; declining balance: 200 / life (double declining). */
+    function defaultRate(f) {
+        const n = Number(f.value("UsefulLifeYears"));
+        const m = L.methods.find((x) => String(x.MethodID) === f.value("MethodID"));
+        if (n > 0)
+            f.set("DepreciationRate", Math.round(((m?.MethodCode === "DB" ? 200 : 100) / n) * 10000) / 10000);
+    }
     const newDefaults = { VatApplicable: settings.VATDefaultApplicable ?? "1", VatInclusive: settings.VATDefaultInclusive ?? "0", VatRate: settings.VATRate ?? "15" };
     const init = { ...v, AssetCode: code, ...(isNew ? newDefaults : { VatApplicable: v.VatApplicable ? "1" : "0", VatInclusive: v.VatInclusive ? "1" : "0", VatRate: v.VatRate ?? settings.VATRate ?? "15", PurchaseAmount: vatOn ? (v.PurchaseAmount ?? v.AcquisitionCost) : v.AcquisitionCost }) };
     const forms = [general, cost, dep, place, purchase, ident, notes].map((defs) => new Form(defs, init));
@@ -214,16 +274,19 @@ export async function assetFormPage(root, a) {
             { perm: "assets.edit", label: t("Change status"), icon: "edit", disabled: isNew || disposed, onClick: () => statusDialog(asset, L, () => assetFormPage(root, a)) },
             { perm: "custody.manage", label: t("Issue to employee"), icon: "user", disabled: isNew || disposed || !!asset?.custody?.some((c) => c.Status === "Issued"), onClick: () => issueDialog(L, { AssetID: asset.AssetID }, (c) => (location.hash = `#/custody/${c.CustodyID}`)) },
             { perm: "assets.dispose", label: t("Dispose"), icon: "dispose", danger: true, disabled: isNew || disposed, onClick: () => disposeDialog(asset, () => assetFormPage(root, a)) }],
+        [{ perm: "assets.value", label: t("Capital addition"), icon: "plus", disabled: isNew || disposed, onClick: () => additionDialog(asset, () => assetFormPage(root, a)) },
+            { perm: "assets.value", label: t("Revalue or impair"), icon: "trend", disabled: isNew || disposed, onClick: () => revalueDialog(asset, () => assetFormPage(root, a)) }],
         [{ perm: "maintenance.edit", label: t("New maintenance"), icon: "wrench", disabled: isNew || disposed, onClick: () => (location.hash = `#/maintenance/new?asset=${id}`) }],
-        [{ label: t("Refresh"), icon: "refresh", disabled: isNew, onClick: () => assetFormPage(root, a) },
+        [{ label: t("Ledger entries"), icon: "journal", disabled: isNew, onClick: () => (location.hash = `#/ledger?asset=${id}`) },
+            { label: t("Refresh"), icon: "refresh", disabled: isNew, onClick: () => assetFormPage(root, a) },
             { label: t("Back to list"), icon: "back", onClick: () => (location.hash = "#/assets") }],
-    ], [t("Fixed asset"), t("Manage"), t("Maintenance"), t("View")]);
+    ], [t("Fixed asset"), t("Manage"), t("Value"), t("Maintenance"), t("View")]);
     // ---- fasttabs
     const tabs = [
         fastTab(t("General"), forms[0].el, { open: true, summary: isNew ? "" : `${asset.CategoryName || ""}` }),
         fastTab(t("Acquisition and cost"), forms[1].el, { open: true, summary: isNew ? "" : `${money2(asset.AcquisitionCost)} · ${fmtDate(asset.AcquisitionDate)}` }),
         fastTab(t("Depreciation"), forms[2].el, { open: true, summary: isNew ? "" : `${asset.MethodName || ""} · ${asset.UsefulLifeYears ?? ""} ${t("years")}` }),
-        fastTab(t("Location and responsibility"), forms[3].el, { open: true, summary: isNew ? "" : [asset.LocationName, asset.CostCenterName].filter(Boolean).join(" · ") }),
+        fastTab(t("Location and responsibility"), forms[3].el, { open: true, summary: isNew ? "" : [asset.BranchCode ? `${asset.BranchCode} · ${nm(asset, "BranchName")}` : "", asset.LocationName, asset.CostCenterName].filter(Boolean).join(" · ") }),
         fastTab(t("Purchase and warranty"), forms[4].el, { summary: isNew ? "" : asset.SupplierName || "" }),
         fastTab(t("Identification"), forms[5].el, { summary: isNew ? "" : asset.SerialNumber || "" }),
         fastTab(t("Notes"), forms[6].el),
@@ -236,14 +299,14 @@ export async function assetFormPage(root, a) {
         tabs.push(fastTab(t("Attachments"), pendingPanel(pending), { open: true, summary: t("Files are attached when you save.") }));
     if (!isNew) {
         tabs.push(fastTab(t("Depreciation history"), depHistory(asset), { summary: t("{0} lines", asset.depreciation.length) }));
-        tabs.push(fastTab(t("Transactions"), txGrid(asset), { summary: t("{0} lines", asset.transactions.length) }));
+        tabs.push(fastTab(t("Ledger entries"), ledgerTab(asset), { open: true, summary: `${t("Net book value")} ${money2(asset.NBV)}` }));
         tabs.push(fastTab(t("Custody"), custodyGrid(asset.custody, { showAsset: false }), { summary: t("{0} lines", asset.custody.length) }));
         tabs.push(fastTab(t("Maintenance"), maintGrid(asset), { summary: t("{0} orders", asset.maintenance.length) }));
         tabs.push(fastTab(t("Attachments"), attachmentsPanel(asset, () => assetFormPage(root, a)), { summary: t("{0} files", asset.attachments.length) }));
     }
     // ---- factbox
     const kv = (k, val, cls = "") => h("div", { class: cls }, h("span", { class: "k" }, t(k)), h("span", { class: "v" }, val));
-    const fb = h("div", null, h("div", { class: "fb" }, h("h4", null, t("Book value")), h("div", { class: "kv" }, kv("Acquisition cost", money2(asset?.AcquisitionCost ?? 0)), vatOn ? kv("VAT (not in cost)", asset?.VatApplicable ? money2(asset.VatAmount) : t("No VAT")) : null, kv("Accumulated depreciation", money2(asset?.AccumDep ?? 0)), h("hr"), kv("Net book value", money2(asset?.NBV ?? 0), "big"))), h("div", { class: "fb" }, h("h4", null, t("Status")), h("div", { class: "kv" }, kv("Status", asset ? pill(asset.AssetStatus) : pill("Draft")), kv("In service", fmtDate(asset?.InServiceDate) || "—"), kv("Held by", asset?.CustodianName || "—"), kv("Attachments", asset ? asset.attachments.length : 0), kv("Last depreciation", lastPosted(asset) || "—"))));
+    const fb = h("div", null, h("div", { class: "fb" }, h("h4", null, t("Book value")), h("div", { class: "kv" }, kv("Acquisition cost", money2(asset?.AcquisitionCost ?? 0)), asset?.Additions ? kv("Capital additions", money2(asset.Additions)) : null, asset?.Additions ? kv("Cost", money2(asset.Cost)) : null, vatOn ? kv("VAT (not in cost)", asset?.VatApplicable ? money2(asset.VatAmount) : t("No VAT")) : null, kv("Accumulated depreciation", money2(asset?.AccumDep ?? 0)), asset?.ValueAdj ? kv("Revaluation / (impairment)", money2(asset.ValueAdj)) : null, h("hr"), kv("Net book value", money2(asset?.NBV ?? 0), "big"))), h("div", { class: "fb" }, h("h4", null, t("Status")), h("div", { class: "kv" }, kv("Status", asset ? pill(asset.AssetStatus) : pill("Draft")), asset?.BranchCode ? kv("Branch", `${asset.BranchCode} · ${nm(asset, "BranchName")}`) : null, kv("In service", fmtDate(asset?.InServiceDate) || "—"), kv("Held by", asset?.CustodianName || "—"), kv("Attachments", asset ? asset.attachments.length : 0), kv("Last depreciation", lastPosted(asset) || "—"))));
     const pg = page({ title: isNew ? t("New fixed asset") : `${asset.AssetCode} : ${nm(asset, "AssetName")}`, subtitle: t("Fixed assets"),
         pills: asset ? [pill(asset.AssetStatus)] : [], ribbon: rb.el, factbox: fb }, ...tabs);
     clear(root);
@@ -277,15 +340,11 @@ function maintGrid(a) {
     });
     return h("div", null, h("div", { class: "msgbar" }, t("Completed maintenance cost: {0}", fmtMoney(cost))), grid.el);
 }
-function txGrid(a) {
-    const grid = new DataGrid({
-        search: false, maxHeight: "300px", empty: "No transactions.", rows: a.transactions,
-        columns: [
-            { key: "TransactionDate", label: "Date", type: "date" }, { key: "TransactionType", label: "Type", type: "status" },
-            { key: "Amount", label: "Amount", type: "money" }, { key: "FromLocation", label: "From location" }, { key: "ToLocation", label: "To location" },
-            { key: "DisposalProceeds", label: "Proceeds", type: "money" }, { key: "ReferenceNumber", label: "Reference" }, { key: "Notes", label: "Notes" }, { key: "CreatedBy", label: "User" },
-        ],
-    });
+/** Every entry of the asset in date order with the running net book value (services/ledger.py). */
+function ledgerTab(a) {
+    const grid = new DataGrid({ search: false, maxHeight: "340px", empty: "No entries.", rows: [], exportName: `ledger-${a.AssetCode}`,
+        columns: ledgerCols(true, (r) => void entryDialog(r)) });
+    api.get(`/api/ledger?asset=${a.AssetID}&limit=5000`).then((res) => grid.setRows(blankZeros(res.rows))).catch(fail);
     return grid.el;
 }
 function attachmentsPanel(a, reload) {
@@ -408,4 +467,72 @@ function disposeDialog(a, done) {
                 return false; await api.post(`/api/assets/${a.AssetID}/dispose`, form.get()); toast(t("Asset disposed"), "ok"); done(); } },
         { label: t("Cancel") },
     ]);
+}
+/** A preview box that asks the server (?dry=1) what the change will do, as the user types. */
+function livePreview(url, form, draw) {
+    const el = h("div", { class: "vp" }, t("Enter the values to see the effect."));
+    let timer = 0, seq = 0;
+    const run = () => {
+        clearTimeout(timer);
+        timer = window.setTimeout(async () => {
+            const my = ++seq;
+            try {
+                const p = await api.post(`${url}?dry=1`, form.get());
+                if (my !== seq)
+                    return;
+                clear(el);
+                el.classList.remove("err");
+                el.append(...draw(p));
+            }
+            catch (e) {
+                if (my !== seq)
+                    return;
+                clear(el);
+                el.classList.add("err");
+                el.append(e instanceof Error ? t(e.message) : String(e));
+            }
+        }, 250);
+    };
+    return { el, run };
+}
+const arrow = (label, a, b, fmt = money2) => h("div", { class: "vp-row" }, h("span", { class: "k" }, t(label)), h("span", { class: "v" }, fmt(a), h("span", { class: "vp-arrow" }, " → "), h("b", null, fmt(b))));
+/** Capital addition (IAS 16.13): adds cost; from the next month the depreciation spreads the new amount over the remaining life. */
+function additionDialog(a, done) {
+    const url = `/api/assets/${a.AssetID}/addition`;
+    const form = new Form([
+        { name: "TransactionDate", label: "Date", type: "date", required: true, onChange: () => pv.run() },
+        { name: "Amount", label: "Amount (net of VAT)", type: "number", step: "0.01", required: true, onChange: () => pv.run() },
+        { name: "UsefulLifeYears", label: "Useful life after the addition (years)", type: "number", step: "0.01", onChange: () => pv.run(),
+            hint: "Total life from the depreciation start. Leave it to keep the current life." },
+        { name: "ReferenceNumber", label: "Invoice / reference" }, { name: "Notes", label: "Description", type: "textarea", wide: true },
+    ], { TransactionDate: today(), UsefulLifeYears: a.UsefulLifeYears });
+    const pv = livePreview(url, form, (p) => [arrow("Cost", p.CostBefore, p.CostAfter), arrow("Net book value", p.NBVBefore, p.NBVAfter),
+        p.LifeAfter !== p.LifeBefore ? arrow("Useful life (years)", p.LifeBefore, p.LifeAfter, (x) => String(x ?? "—")) : "",
+        arrow("Monthly depreciation", p.MonthlyBefore, p.MonthlyAfter), h("div", { class: "vp-note" }, t("{0} months of useful life left", p.MonthsLeft))]);
+    dialog(t("Capital addition · {0}", a.AssetCode), h("div", null, h("p", { class: "dlg-intro" }, t("An improvement or a part that becomes part of the asset. Repairs and servicing are maintenance, not additions.")), form.el, pv.el), [
+        { label: t("Record the addition"), primary: true, onClick: async () => { if (!form.validate())
+                return false; await api.post(url, form.get()); toast(t("Addition recorded"), "ok"); done(); } },
+        { label: t("Cancel") }
+    ], { wide: true });
+}
+/** Revaluation or impairment (IAS 16.31, IAS 36): brings the carrying amount to a new value with the journal split shown first. */
+function revalueDialog(a, done) {
+    const url = `/api/assets/${a.AssetID}/revalue`;
+    const form = new Form([
+        { name: "TransactionDate", label: "Date", type: "date", required: true, onChange: () => pv.run() },
+        { name: "NewValue", label: "New carrying amount", type: "number", step: "0.01", required: true, onChange: () => pv.run(),
+            hint: "Fair value (revaluation) or recoverable amount (impairment test)." },
+        { name: "ReferenceNumber", label: "Valuation report / reference" }, { name: "Notes", label: "Reason", type: "textarea", wide: true },
+    ], { TransactionDate: today(), NewValue: a.NBV });
+    const pv = livePreview(url, form, (p) => [arrow("Net book value", p.NBVBefore, p.NBVAfter),
+        h("div", { class: "vp-row" }, h("span", { class: "k" }, t(p.Change < 0 ? "Impairment" : "Revaluation")), h("span", { class: "v" }, h("b", null, money2(p.Change)))),
+        p.ToProfitLoss ? h("div", { class: "vp-row" }, h("span", { class: "k" }, t(p.ToProfitLoss > 0 ? "Impairment loss (profit or loss)" : "Reversal of impairment (profit or loss)")), h("span", { class: "v" }, money2(Math.abs(p.ToProfitLoss)))) : "",
+        p.ToSurplus ? h("div", { class: "vp-row" }, h("span", { class: "k" }, t(p.ToSurplus > 0 ? "To revaluation surplus (equity)" : "From revaluation surplus (equity)")), h("span", { class: "v" }, money2(Math.abs(p.ToSurplus)))) : "",
+        p.ResidualAfter !== p.ResidualBefore ? arrow("Residual value", p.ResidualBefore, p.ResidualAfter) : "",
+        arrow("Monthly depreciation", p.MonthlyBefore, p.MonthlyAfter)]);
+    dialog(t("Revalue or impair · {0}", a.AssetCode), h("div", null, h("p", { class: "dlg-intro" }, t("A decrease uses the asset's revaluation surplus first, then is an impairment loss; an increase first reverses earlier impairment losses, then goes to the revaluation surplus.")), form.el, pv.el), [
+        { label: t("Post"), primary: true, onClick: async () => { if (!form.validate())
+                return false; await api.post(url, form.get()); toast(t("Carrying amount updated"), "ok"); done(); } },
+        { label: t("Cancel") }
+    ], { wide: true });
 }

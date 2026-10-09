@@ -1,14 +1,19 @@
 /* Dark theme overrides. */
-/* ---- dark theme */
+/* ---- dark theme: warm charcoal neutrals (as in Claude Code), not blue-black; the same accent, stepped for the dark surface */
 :root[data-theme="dark"] {
-  --bg: #1b1a19; --paper: #252423; --head: #2d2c2b; --bg2: #323130; --ink: #f3f2f1; --ink-2: #c8c6c4; --ink-3: #979593;
-  --line: #3b3a39; --line-2: #605e5c; --hover: #323130; --sel: #0b3a5e; --blue-xl: #10283f; --blue-l: #0d3a5f; --blue-t: #6cb8f6; --blue-h: #2b88d8;
-  --ok: #92c353; --ok-bg: #1e3318; --warn: #ffd335; --warn-bg: #3d3208; --err: #f1707b; --err-bg: #4a1d21; --info-bg: #10283f;
-  --hdr: #001433; --hdr-2: #0a2450; --shadow: 0 6.4px 14.4px rgba(0,0,0,.5), 0 1.2px 3.6px rgba(0,0,0,.4);
+  --top: #1f1e1d; --side: #1f1e1d; --hdr: #1f1e1d; --hdr-2: #34332f;
+  --bg: #262624; --paper: #30302e; --head: #2b2b29; --bg2: #353532; --hover: #3a3a37; --sel: #33404d;
+  --ink: #f0eee6; --ink-2: #c2c0b6; --ink-3: #aeaca2; --line: #3e3d39; --line-2: #55534d;
+  --blue: #6f9fc8; --blue-h: #82afd4; --blue-t: #9cc3e4; --blue-l: #34465a; --blue-xl: #2f3a44;
+  --ok: #9cc98d; --ok-bg: #2c3a29; --warn: #e6c26b; --warn-bg: #3f3720; --warn-line: #b8913f; --err: #ec968e; --err-bg: #4a2a27; --info-bg: #2f3a44;
+  --gold: #c9a96b; --bar2: #46596a; --shadow: 0 8px 24px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.35);
   color-scheme: dark;
 }
-:root[data-theme="dark"] .bar-row .fill2 { background: #2f5d86; }
-:root[data-theme="dark"] .toast { background: #484644; }
+:root[data-theme="dark"] .toast { background: #3a3a37; }
+:root[data-theme="dark"] .btn.primary, :root[data-theme="dark"] .rb.primary { color: #1f1e1d; }
+:root[data-theme="dark"] .rb.primary svg { color: #1f1e1d; }
 :root[data-theme="dark"] .paper .rh h2, :root[data-theme="dark"] table.rpt tr.grp td { color: var(--ink); }
-:root[data-theme="dark"] .paper .rh { border-bottom-color: var(--blue); }
-:root[data-theme="dark"] table.rpt th { background: #0b2d63; }
+:root[data-theme="dark"] .paper .rh { border-bottom-color: var(--line-2); }
+:root[data-theme="dark"] table.rpt th { background: var(--head); }
+:root[data-theme="dark"] .topbar .brand .logo { background: var(--blue); color: #1f1e1d; }
+:root[data-theme="dark"] .nn-btn { color: #1f1e1d; }

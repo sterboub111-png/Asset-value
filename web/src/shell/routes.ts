@@ -1,9 +1,14 @@
 /** Page routes, the navigation tree and the permission each page needs. */
 import { assetFormPage, assetsListPage } from "../pages/assets/assets.js";
 import { dashboardPage } from "../pages/workspace/dashboard.js";
-import { auditPage, depreciationPage, journalPage, periodsPage, transactionsPage } from "../pages/depreciation/depreciation.js";
+import { auditPage, depreciationPage, integrityPage, journalPage, periodsPage, transactionsPage } from "../pages/depreciation/depreciation.js";
 import { maintenanceFormPage, maintenanceListPage } from "../pages/maintenance/maintenance.js";
 import { reportPage, reportsGroupPage, reportsIndexPage } from "../pages/reports/reports.js";
+import { chartsDashboardPage } from "../pages/reports/dashboard.js";
+import { assetImportPage } from "../pages/assets/import.js";
+import { assetLabelsPage } from "../pages/assets/labels.js";
+import { countPage, countsListPage } from "../pages/assets/counts.js";
+import { ledgerPage } from "../pages/assets/ledger.js";
 import { custodyFormPage, custodyListPage, handoverFormPage } from "../pages/contacts/custody.js";
 import { employeeFormPage, employeesListPage } from "../pages/contacts/employees.js";
 import { supplierFormPage, suppliersListPage } from "../pages/contacts/suppliers.js";
@@ -13,8 +18,13 @@ export type PageFn = (root: HTMLElement, a: { args: string[]; query: URLSearchPa
 export interface Route { re: RegExp; fn: PageFn; nav: string; crumb: string; }
 
 export const ROUTES: Route[] = [
-  { re: /^$/, fn: dashboardPage, nav: "#/", crumb: "Workspace" },
+  { re: /^$/, fn: dashboardPage, nav: "#/", crumb: "Home" },
+  { re: /^charts$/, fn: chartsDashboardPage, nav: "#/charts", crumb: "Dashboard" },
   { re: /^assets$/, fn: assetsListPage, nav: "#/assets", crumb: "All fixed assets" },
+  { re: /^assets\/import$/, fn: assetImportPage, nav: "#/assets/import", crumb: "Import fixed assets" },
+  { re: /^assets\/labels$/, fn: assetLabelsPage, nav: "#/assets/labels", crumb: "Asset labels" },
+  { re: /^counts$/, fn: countsListPage, nav: "#/counts", crumb: "Physical counts" },
+  { re: /^counts\/(\d+)$/, fn: countPage, nav: "#/counts", crumb: "Physical count" },
   { re: /^assets\/(new|\d+)$/, fn: assetFormPage, nav: "#/assets", crumb: "Fixed asset" },
   { re: /^maintenance$/, fn: maintenanceListPage, nav: "#/maintenance", crumb: "Maintenance orders" },
   { re: /^maintenance\/(new|\d+)$/, fn: maintenanceFormPage, nav: "#/maintenance", crumb: "Maintenance order" },
@@ -29,41 +39,50 @@ export const ROUTES: Route[] = [
   { re: /^periods$/, fn: periodsPage, nav: "#/periods", crumb: "Depreciation periods" },
   { re: /^journal$/, fn: journalPage, nav: "#/journal", crumb: "Fixed asset journal" },
   { re: /^transactions$/, fn: transactionsPage, nav: "#/transactions", crumb: "Fixed asset transactions" },
+  { re: /^ledger$/, fn: ledgerPage, nav: "#/ledger", crumb: "Fixed asset ledger" },
   { re: /^audit$/, fn: auditPage, nav: "#/audit", crumb: "Audit log" },
+  { re: /^integrity$/, fn: integrityPage, nav: "#/integrity", crumb: "Data checks" },
   { re: /^reports$/, fn: reportsIndexPage, nav: "#/reports", crumb: "Reports" },
   { re: /^reports\/g\/([\w-]+)$/, fn: reportsGroupPage, nav: "#/reports", crumb: "Reports" },
   { re: /^reports\/([\w-]+)$/, fn: reportPage, nav: "#/reports", crumb: "Reports" },
   { re: /^settings(?:\/(\w+))?$/, fn: settingsPage, nav: "#/settings", crumb: "Settings" },
 ];
 
-export interface NavItem { label: string; icon: string; href: string; }
-export interface NavSection { id: string; section: string; items: NavItem[]; reports?: boolean; }
+/** The navigation pane: a few accounting tasks (QuickBooks-style); a task with pages opens to show them. */
+export interface NavLink { label: string; href: string; }
+export interface NavItem { label: string; icon: string; href: string; children?: NavLink[]; }
 
-export const NAV: NavSection[] = [
-  { id: "assets", section: "Fixed assets", items: [{ label: "Workspace", icon: "home", href: "#/" }, { label: "All fixed assets", icon: "asset", href: "#/assets" }] },
-  { id: "contacts", section: "Contacts", items: [
-    { label: "Suppliers", icon: "truck", href: "#/suppliers" },
-    { label: "Employees", icon: "user", href: "#/employees" },
-    { label: "Asset custody", icon: "transfer", href: "#/custody" }] },
-  { id: "maint", section: "Maintenance", items: [{ label: "Maintenance orders", icon: "wrench", href: "#/maintenance" }] },
-  { id: "periodic", section: "Periodic tasks", items: [{ label: "Depreciation run", icon: "calc", href: "#/depreciation" }, { label: "Depreciation periods", icon: "calendar", href: "#/periods" }] },
-  { id: "inq", section: "Inquiries", items: [{ label: "Fixed asset journal", icon: "journal", href: "#/journal" }, { label: "Fixed asset transactions", icon: "list", href: "#/transactions" }, { label: "Audit log", icon: "audit", href: "#/audit" }] },
-  { id: "reports", section: "Reports", reports: true, items: [] },
-  { id: "setup", section: "Setup", items: [{ label: "Settings", icon: "setup", href: "#/settings" }] },
+export const NAV: NavItem[] = [
+  { label: "Home", icon: "home", href: "#/" },
+  { label: "Fixed assets", icon: "asset", href: "#/assets", children: [
+    { label: "All fixed assets", href: "#/assets" }, { label: "Physical counts", href: "#/counts" },
+    { label: "Asset labels", href: "#/assets/labels" }, { label: "Import from Excel", href: "#/assets/import" }] },
+  { label: "Depreciation", icon: "calc", href: "#/depreciation", children: [
+    { label: "Depreciation run", href: "#/depreciation" }, { label: "Depreciation periods", href: "#/periods" }] },
+  { label: "Maintenance", icon: "wrench", href: "#/maintenance" },
+  { label: "Custody", icon: "user", href: "#/custody", children: [
+    { label: "Asset custody", href: "#/custody" }, { label: "Employees", href: "#/employees" }] },
+  { label: "Suppliers", icon: "truck", href: "#/suppliers" },
+  { label: "Accounting", icon: "journal", href: "#/journal", children: [
+    { label: "Fixed asset ledger", href: "#/ledger" }, { label: "Fixed asset journal", href: "#/journal" },
+    { label: "Data checks", href: "#/integrity" }, { label: "Audit log", href: "#/audit" }] },
+  { label: "Reports", icon: "report", href: "#/reports", children: [
+    { label: "All reports", href: "#/reports" }, { label: "Dashboard", href: "#/charts" }] },
 ];
+export const NAV_BOTTOM: NavItem[] = [{ label: "Settings", icon: "setup", href: "#/settings" }];
 
 /** Permission needed to open a page (also decides which navigation entries a user sees). */
 export function permFor(href: string): string | null {
-  if (/^#\/assets\/new/.test(href)) return "assets.edit";
+  if (/^#\/assets\/(new|import)/.test(href)) return "assets.edit";
   if (/^#\/maintenance\/new/.test(href)) return "maintenance.edit";
   if (/^#\/(suppliers|employees)\/new/.test(href)) return "contacts.edit";
-  if (/^#\/assets/.test(href)) return "assets.view";
+  if (/^#\/(assets|counts|ledger)/.test(href)) return "assets.view";
   if (/^#\/maintenance/.test(href)) return "maintenance.view";
   if (/^#\/(suppliers|employees)/.test(href)) return "contacts.view";
   if (/^#\/custody/.test(href)) return "custody.view";
   if (/^#\/(depreciation|periods)/.test(href)) return "depreciation.view";
   if (/^#\/(journal|transactions)/.test(href)) return "inquiries.view";
   if (/^#\/audit/.test(href)) return "audit.view";
-  if (/^#\/reports/.test(href)) return "reports.view";
+  if (/^#\/(reports|charts|integrity)/.test(href)) return "reports.view";
   return null;
 }

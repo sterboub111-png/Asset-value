@@ -1,19 +1,14 @@
-/* Navigation rail: the pane folds to icons instead of hiding. */
-/* ---- navigation rail: on wide screens the pane folds down to icons instead of disappearing */
-.nav-item { white-space: nowrap; }
-.nav-search { cursor: default; }
-@media (min-width: 901px) {
-  body.nav-rail { --nav-w: 52px; }
-  body.nav-rail .nav { padding-top: 6px; }
-  body.nav-rail .nav-search { padding: 4px 8px 8px; cursor: pointer; }
-  body.nav-rail .nav-search input { width: 36px; padding: 0; color: transparent; cursor: pointer; text-indent: -999px; }
-  body.nav-rail .nav-search input::placeholder { color: transparent; }
-  body.nav-rail .nav-search .ic-wrap { inset-inline-start: 8px; width: 36px; justify-content: center; }
-  body.nav-rail .nav-sec { height: 1px; padding: 0; margin: 6px 12px; background: var(--line); font-size: 0; pointer-events: none; }
-  body.nav-rail .nav-sec svg, body.nav-rail .nav-sec span, body.nav-rail .nav-grp { display: none; }
-  body.nav-rail .nav-body { display: block !important; }
-  body.nav-rail .nav-item, body.nav-rail .nav-item.sub { justify-content: center; padding: 9px 0; gap: 0; }
-  body.nav-rail .nav-item span { display: none; }
-  body.nav-rail .nav-item.sub svg { width: 16px; height: 16px; }
+/* Navigation rail: on wide screens the pane folds to icons; a task's pages open in a flyout. */
+@media (min-width: 900px) {
+  body.nav-rail { --nav-w: 64px; }
+  body.nav-rail .nav { padding: 12px 8px; align-items: stretch; overflow: visible; }
+  body.nav-rail .nn-btn { width: 44px; height: 44px; padding: 0; border-radius: 50%; margin: 0 auto; }
+  body.nav-rail .nn-btn span, body.nav-rail .nav-label, body.nav-rail .nav-caret { display: none; }
+  body.nav-rail .nav-top { justify-content: center; padding: 10px 0; }
+  body.nav-rail .nav-group.active > .nav-top::before, body.nav-rail .nav-group.active > .nav-row .nav-top::before { inset-inline-start: -8px; }
+  body.nav-rail .nav-group { position: relative; }
+  body.nav-rail .nav-group.has-kids .nav-kids { display: none; position: absolute; top: 0; inset-inline-start: 100%; margin-inline-start: 6px; min-width: 210px; background: var(--paper); border: 1px solid var(--line);
+    border-radius: 8px; box-shadow: var(--shadow); padding: 6px; z-index: 70; }
+  body.nav-rail .nav-group.has-kids:hover .nav-kids, body.nav-rail .nav-group.has-kids:focus-within .nav-kids { display: flex; }
 }
 @media (prefers-reduced-motion: reduce) { .body { transition: none; } }

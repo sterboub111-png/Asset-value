@@ -1,8 +1,15 @@
 # Database
 
-SQLite file `data/gooya_asset.db` (the file name is kept from the original Access project so existing installations continue to work).
-WAL mode, `PRAGMA foreign_keys=ON`. `db.init_db()` runs at every start and is idempotent: it creates missing tables, adds missing
-columns (`ALTER TABLE`), and seeds groups, ledger accounts, methods, currencies, periods, settings and the four standard roles.
+PostgreSQL when a URL is configured (`data/database.url` or `USOOL_DATABASE_URL`), otherwise the SQLite file `data/gooya_asset.db`
+(WAL mode, `PRAGMA foreign_keys=ON`). One schema and one body of SQL serve both: the services write SQLite-style SQL and `app/dbpg.py`
+adapts it for PostgreSQL (names with capitals are quoted so `AssetCode` stays `AssetCode`; `?` → `%s`; `LIKE` → `ILIKE`;
+`INTEGER PRIMARY KEY AUTOINCREMENT` → identity column; `REAL` → `DOUBLE PRECISION`; `round(double, int)` is added as a function).
+Create the PostgreSQL database with `LC_COLLATE=C` so codes sort exactly as in SQLite.
+`db.init_db()` runs at every start and is idempotent: it creates missing tables, adds missing columns (`ALTER TABLE`), and seeds groups,
+ledger accounts, methods, currencies, periods, settings and the four standard roles.
+
+Portable copy: `db.dump_rows` / `db.load_tables` read and write every table (keys included, values converted to each column's type,
+key counters reset after loading). The PostgreSQL backups, `tools/restore_backup.py` and `tools/migrate_to_postgres.py` use them.
 
 ## Tables
 
@@ -10,8 +17,10 @@ columns (`ALTER TABLE`), and seeds groups, ledger accounts, methods, currencies,
 | Table | Content |
 |---|---|
 | `tbl_AssetCategories` | fixed asset groups: code, name (+`Ar`), default life/rate/method, ledger accounts (asset, accumulated depreciation, expense, gain, loss) |
-| `tbl_Locations`, `tbl_CostCenters` | locations and cost centers (code, name, name `Ar`, active) |
-| `tbl_DepreciationMethods` | `SL` straight line, `NONE` no depreciation |
+| `tbl_Branches` | branches: code, name (+`Ar`), `CountryCode` (ISO 3166), city, region, active |
+| `tbl_Locations`, `tbl_CostCenters` | locations (with their `BranchID`) and cost centers (code, name, name `Ar`, active) |
+| `tbl_UserBranches` | the branches a user works in (none = every branch) |
+| `tbl_DepreciationMethods` | `SL` straight line, `DB` declining balance (switching to straight line), `NONE` no depreciation |
 | `tbl_GLAccounts` | ledger accounts (`FIXED ASSET`, `ACCUMULATED DEPRECIATION`, expense, gain/loss, clearing) |
 | `tbl_Currencies` | currency code, name, symbol |
 | `tbl_Settings` | key/value settings (company, VAT, fiscal year, asset code prefix, backup schedule and results, folders) |
@@ -20,7 +29,7 @@ columns (`ALTER TABLE`), and seeds groups, ledger accounts, methods, currencies,
 | Table | Content |
 |---|---|
 | `tbl_Assets` | the register: code `AssetCode`, names, group, dates (acquisition, in service, depreciation start, disposal), cost (net), residual, life, rate, method, opening accumulated depreciation, location/cost center, supplier, invoice/PO, serial/model/manufacturer, warranty, VAT fields (`VatApplicable`, `VatInclusive`, `VatRate`, `PurchaseAmount`, `VatAmount`), status |
-| `tbl_AssetTransactions` | `ACQUISITION`, `TRANSFER`, `STATUS`, `DISPOSAL` with from/to location and cost center, amounts, reference |
+| `tbl_AssetTransactions` | `ACQUISITION`, `ADDITION`, `TRANSFER`, `STATUS`, `IMPAIRMENT`, `REVALUATION`, `DISPOSAL` with from/to location and cost center, amounts, reference; a revaluation / impairment keeps its split in `PnlAmount` (loss +) and `SurplusAmount` (surplus +) |
 | `tbl_AssetAttachments` | files attached to an asset (or to a custody record via `CustodyID`): title, type, name, extension, path on disk |
 
 ### Depreciation
@@ -28,7 +37,7 @@ columns (`ALTER TABLE`), and seeds groups, ledger accounts, methods, currencies,
 |---|---|
 | `tbl_DepreciationPeriods` | monthly periods per fiscal year: `OPEN` / `CLOSED` |
 | `tbl_Depreciation` | one row per asset and period: opening/closing accumulated depreciation, period amount, `DRAFT` or `POSTED` |
-| `tbl_DepreciationJournal` | posted ledger lines (`DEPRECIATION` and `DISPOSAL` types): account, debit, credit, reference, description |
+| `tbl_DepreciationJournal` | posted ledger lines (`DEPRECIATION`, `DISPOSAL`, `IMPAIRMENT`, `REVALUATION`): account, debit, credit, reference, description |
 
 ### Contacts and operations
 | Table | Content |

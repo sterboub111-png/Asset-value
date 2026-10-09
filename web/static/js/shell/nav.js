@@ -1,12 +1,13 @@
-/** Navigation pane: sections, live filter, report groups, and the collapsible icon rail. */
-import { api } from "../core/api.js";
+/** Navigation pane: a "+ New" menu, a few accounting tasks that open to show their pages, Settings at the foot,
+ *  and the icon rail on wide screens. */
+import { api, lookups } from "../core/api.js";
 import { t } from "../core/i18n.js";
 import { can } from "../core/session.js";
-import { groupSlug } from "../pages/reports/reports.js";
+import { issueDialog } from "../pages/contacts/custody.js";
 import { h, icon } from "../ui/index.js";
-import { NAV, permFor } from "./routes.js";
-let navEl;
-// ---- navigation pane: wide screens fold it to an icon rail, narrow screens slide it in and out
+import { NAV, NAV_BOTTOM, permFor } from "./routes.js";
+let navEl = null;
+// ---- wide screens fold the pane to an icon rail, narrow screens slide it in and out
 export const railKey = "gooya.nav.rail";
 export const narrow = () => innerWidth < 900;
 const isRail = () => document.body.classList.contains("nav-rail");
@@ -23,19 +24,14 @@ export function toggleNav() {
     else
         setRail(!isRail());
 }
-// ---- navigation pane state (collapsed sections are remembered)
-const navKey = "gooya.nav.state";
-const navState = () => { try {
-    return JSON.parse(localStorage.getItem(navKey) || "{}");
-}
-catch {
-    return {};
-} };
-const isOpen = (id, def) => navState()[id] ?? def;
-const setOpen = (id, open) => { try {
-    localStorage.setItem(navKey, JSON.stringify({ ...navState(), [id]: open }));
-}
-catch { /* ignore */ } };
+let wasNarrow = narrow();
+addEventListener("resize", () => {
+    const now = narrow();
+    if (now !== wasNarrow)
+        document.body.classList.toggle("nav-collapsed", now); // wide screens use the icon rail instead
+    wasNarrow = now;
+});
+// ---- report groups (the reports center lists them; kept here because the shell loads them once per session)
 export let reportGroups = [];
 export async function loadReportGroups() {
     try {
@@ -49,70 +45,115 @@ export async function loadReportGroups() {
         reportGroups = [];
     }
 }
-function chevronBtn(cls, id, title, open, onToggle) {
-    const b = h("button", { class: `${cls} ${open ? "open" : ""}`, type: "button", "aria-expanded": String(open) }, icon("chevron"), h("span", null, title));
-    b.addEventListener("click", () => {
-        const now = !b.classList.contains("open");
-        b.classList.toggle("open", now);
-        b.setAttribute("aria-expanded", String(now));
-        setOpen(id, now);
-        onToggle(now);
+// ---- which task groups the user opened (remembered)
+const openKey = "usool.nav.open";
+const opened = () => { try {
+    return JSON.parse(localStorage.getItem(openKey) || "[]");
+}
+catch {
+    return [];
+} };
+const remember = (href, open) => {
+    const set = new Set(opened());
+    if (open)
+        set.add(href);
+    else
+        set.delete(href);
+    try {
+        localStorage.setItem(openKey, JSON.stringify([...set]));
+    }
+    catch { /* ignore */ }
+};
+/** The "+ New" menu: every record the user may create, from anywhere. */
+function newMenu() {
+    const items = [
+        ["New fixed asset", "assets.edit", "#/assets/new"],
+        ["Import fixed assets from Excel", "assets.edit", "#/assets/import"],
+        ["New maintenance order", "maintenance.edit", "#/maintenance/new"],
+        ["Issue to employee", "custody.manage", () => void lookups().then((L) => issueDialog(L, {}, (c) => (location.hash = `#/custody/${c.CustodyID}`)))],
+        ["New supplier", "contacts.edit", "#/suppliers/new"],
+        ["New employee", "contacts.edit", "#/employees/new"],
+        ["Run depreciation", "depreciation.run", "#/depreciation"],
+    ];
+    const mine = items.filter(([, perm]) => can(perm));
+    if (!mine.length)
+        return null;
+    const menu = h("div", { class: "nn-menu", role: "menu" });
+    const btn = h("button", { class: "nn-btn", type: "button", "aria-haspopup": "menu", "aria-expanded": "false" }, icon("plus"), h("span", null, t("New")));
+    const wrap = h("div", { class: "nn" }, btn, menu);
+    const close = () => { wrap.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); document.removeEventListener("mousedown", outside); };
+    const outside = (e) => { if (!wrap.contains(e.target))
+        close(); };
+    for (const [label, , go] of mine) {
+        menu.append(h(typeof go === "string" ? "a" : "button", { class: "nn-item", role: "menuitem", ...(typeof go === "string" ? { href: go } : { type: "button" }),
+            onclick: () => { close(); if (typeof go !== "string")
+                go(); } }, t(label)));
+    }
+    btn.addEventListener("click", () => {
+        const open = !wrap.classList.contains("open");
+        wrap.classList.toggle("open", open);
+        btn.setAttribute("aria-expanded", String(open));
+        if (open) {
+            document.addEventListener("mousedown", outside);
+            menu.firstElementChild?.focus();
+        }
+        else
+            close();
     });
-    return b;
+    menu.addEventListener("keydown", (e) => {
+        const list = [...menu.querySelectorAll(".nn-item")];
+        const i = list.indexOf(document.activeElement);
+        if (e.key === "Escape") {
+            close();
+            btn.focus();
+        }
+        else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            list[(i + (e.key === "ArrowDown" ? 1 : -1) + list.length) % list.length]?.focus();
+        }
+    });
+    return wrap;
+}
+function navItem(item) {
+    const kids = (item.children || []).filter((c) => can(permFor(c.href)));
+    if (!kids.length && (item.children?.length || !can(permFor(item.href))))
+        return null;
+    const top = h("a", { class: "nav-top", href: kids.length ? kids[0].href : item.href, "data-href": item.href, title: t(item.label) }, icon(item.icon), h("span", { class: "nav-label" }, t(item.label)));
+    if (!kids.length)
+        return h("div", { class: "nav-group" }, top);
+    const body = h("div", { class: "nav-kids" }, ...kids.map((c) => h("a", { class: "nav-kid", href: c.href, "data-href": c.href }, t(c.label))));
+    const caret = h("button", { class: "nav-caret", type: "button", "aria-label": t(item.label), "aria-expanded": "false" }, icon("chevron"));
+    const group = h("div", { class: "nav-group has-kids" }, h("div", { class: "nav-row" }, top, caret), body);
+    const set = (open, keep = true) => { group.classList.toggle("open", open); caret.setAttribute("aria-expanded", String(open)); if (keep)
+        remember(item.href, open); };
+    caret.addEventListener("click", () => set(!group.classList.contains("open")));
+    set(opened().includes(item.href), false);
+    return group;
 }
 export function buildNav() {
     const nav = h("nav", { class: "nav", "aria-label": t("Navigation") });
-    const filter = h("input", { type: "search", placeholder: t("Search for a page"), "aria-label": t("Search for a page"), autocomplete: "off" });
-    const searchBox = h("div", { class: "nav-search" }, h("span", { class: "ic-wrap" }, icon("search")), filter);
-    searchBox.addEventListener("click", () => { if (isRail()) {
-        setRail(false);
-        filter.focus();
-    } }); // a folded pane opens when the search is used
-    nav.append(searchBox);
-    const link = (i, sub = false) => h("a", { href: i.href, class: `nav-item ${sub ? "sub" : ""}`, "data-label": t(i.label).toLowerCase(), title: t(i.label) }, icon(i.icon), h("span", null, t(i.label)));
-    for (const s of NAV) {
-        const items = s.items.filter((i) => can(permFor(i.href)));
-        if (!items.length && !(s.reports && can("reports.view") && reportGroups.length))
-            continue;
-        const body = h("div", { class: "nav-body" });
-        const secOpen = isOpen(s.id, true);
-        body.style.display = secOpen ? "" : "none";
-        nav.append(chevronBtn("nav-sec", s.id, t(s.section), secOpen, (o) => { body.style.display = o ? "" : "none"; }), body);
-        items.forEach((i) => body.append(link(i)));
-        if (s.reports && can("reports.view"))
-            reportGroups.forEach((g) => body.append(link({ label: g.group, icon: "report", href: `#/reports/g/${groupSlug(g.group)}` })));
-    }
-    // live filter: show only matching pages, expand their sections
-    filter.addEventListener("input", () => {
-        const q = filter.value.trim().toLowerCase();
-        nav.querySelectorAll(".nav-item").forEach((a) => { a.style.display = !q || (a.dataset.label || "").includes(q) ? "" : "none"; });
-        nav.querySelectorAll(".nav-body").forEach((b) => {
-            if (q)
-                b.style.display = b.querySelector(".nav-item:not([style*='none'])") ? "" : "none";
-            else {
-                const btn = b.previousElementSibling;
-                b.style.display = btn && btn.classList.contains("open") ? "" : "none";
-            }
-        });
-        nav.querySelectorAll(".nav-sec, .nav-grp").forEach((b) => { const body = b.nextElementSibling; b.style.display = !q || (body && body.style.display !== "none") ? "" : "none"; });
-    });
-    nav.addEventListener("click", (e) => { if (innerWidth < 900 && e.target.closest("a"))
+    const nn = newMenu();
+    if (nn)
+        nav.append(nn);
+    nav.append(h("div", { class: "nav-list" }, ...NAV.map(navItem)), h("div", { class: "nav-foot" }, ...NAV_BOTTOM.map(navItem)));
+    nav.addEventListener("click", (e) => { if (narrow() && e.target.closest("a"))
         document.body.classList.add("nav-collapsed"); });
     navEl = nav;
     return nav;
 }
+/** Highlight the page on screen and the task it belongs to (its group opens). */
 export function markActive(href) {
-    navEl.querySelectorAll("a.nav-item").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === href));
-    const active = navEl.querySelector(`a.nav-item[href="${href}"]`);
-    // make sure the section (and report group) that holds the current page is visible
-    let body = active?.parentElement || null;
-    while (body && body.classList.contains("nav-body")) {
-        const btn = body.previousElementSibling;
-        if (btn && !btn.classList.contains("open")) {
-            btn.classList.add("open");
-            btn.setAttribute("aria-expanded", "true");
-        }
-        body.style.display = "";
-        body = body.parentElement;
+    if (!navEl)
+        return;
+    navEl.querySelectorAll(".active").forEach((n) => n.classList.remove("active"));
+    const link = navEl.querySelector(`.nav-kid[data-href="${href}"]`) || navEl.querySelector(`.nav-top[data-href="${href}"]`);
+    if (!link)
+        return;
+    link.classList.add("active");
+    const group = link.closest(".nav-group");
+    group?.classList.add("active");
+    if (group?.classList.contains("has-kids") && !group.classList.contains("open")) {
+        group.classList.add("open");
+        group.querySelector(".nav-caret")?.setAttribute("aria-expanded", "true");
     }
 }

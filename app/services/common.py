@@ -41,6 +41,48 @@ def set_lang(lang: str) -> None:
     _ctx.lang = "ar" if lang == "ar" else "en"
 
 
+# ---- branch scope: which branches the current request may see (None = all). Set per request from the user's
+# branches and the branch picker; every asset query adds scope_sql() so lists, reports and postings agree.
+def set_scope(branch_ids: list[int] | None) -> None:
+    _ctx.scope = None if branch_ids is None else sorted({int(b) for b in branch_ids})
+
+
+def scope() -> list[int] | None:
+    return getattr(_ctx, "scope", None)
+
+
+def scope_sql(alias: str = "A") -> str:
+    """' AND <alias>.LocationID IN (locations of the branches in scope)'; empty when everything is in scope.
+    Assets without a location belong to no branch, so only an unrestricted scope sees them."""
+    ids = scope()
+    if ids is None:
+        return ""
+    if not ids:
+        return " AND 1=0"
+    return f" AND {alias}.LocationID IN (SELECT LocationID FROM tbl_Locations WHERE BranchID IN ({','.join(str(i) for i in ids)}))"
+
+
+class unscoped:
+    """`with unscoped():` lifts the branch scope for one step that legitimately reaches outside it (a count closing moves
+    an asset of another branch to the location where it was found)."""
+    def __enter__(self):
+        self.prev = getattr(_ctx, "scope", None)
+        _ctx.scope = None
+
+    def __exit__(self, *exc):
+        _ctx.scope = self.prev
+
+
+def in_scope(con, location_id) -> bool:
+    ids = scope()
+    if ids is None:
+        return True
+    if not location_id:
+        return False
+    r = con.execute("SELECT BranchID FROM tbl_Locations WHERE LocationID=?", (location_id,)).fetchone()
+    return bool(r and r[0] in ids)
+
+
 MONTHS_AR = {"January": "يناير", "February": "فبراير", "March": "مارس", "April": "أبريل", "May": "مايو", "June": "يونيو", "July": "يوليو",
              "August": "أغسطس", "September": "سبتمبر", "October": "أكتوبر", "November": "نوفمبر", "December": "ديسمبر"}
 

@@ -1,103 +1,163 @@
-import { api } from "../../core/api.js";
-import { t } from "../../core/i18n.js";
+/** Workspace: what needs doing now and where the month-end stands. Numbers and lists only (charts live on the Dashboard);
+ *  every figure opens the list behind it. What needs attention is decided by the server (services/dashboard.attention). */
+import { api, lookups } from "../../core/api.js";
+import { getLang, t } from "../../core/i18n.js";
+import { can, getMe, userTitle } from "../../core/session.js";
 import type { Rec } from "../../core/types.js";
-import { clear, fmtMoney, fmtInt, fail, h, page, pill } from "../../ui/index.js";
+import { issueDialog } from "../contacts/custody.js";
+import { clear, fail, fmtDate, fmtInt, fmtMoney, h, nm, page, pill } from "../../ui/index.js";
+
+const greeting = () => { const hr = new Date().getHours(); return hr < 12 ? t("Good morning, {0}") : hr < 17 ? t("Good afternoon, {0}") : t("Good evening, {0}"); };
+const longDate = () => new Intl.DateTimeFormat(getLang() === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
 
 export async function dashboardPage(root: HTMLElement): Promise<void> {
-  const view = h("div", { class: "loading" }, t("Loading…"));
-  root.append(view);
+  root.append(h("div", { class: "loading" }, t("Loading…")));
+  const me = getMe();
+  const head = (extra?: Node | null) => h("div", { class: "ws-hello" },
+    h("div", null, h("h2", null, greeting().replace("{0}", userTitle(me) || "")), h("div", { class: "ws-date" }, longDate(), extra || null)));
   let d: Rec;
   try { d = await api.get("/api/dashboard"); } catch (e) {
+    // a role without asset access still gets a home page: the greeting and the way to its own pages
     clear(root);
-    // a role without asset access still gets a home page instead of a spinner and an error
-    root.append(page({ title: t("Fixed assets"), subtitle: t("Workspace") }, h("div", { class: "msgbar" }, t("Welcome. Use the menu on the side to open the pages you have access to."))).el);
+    root.append(page({ title: t("Home"), subtitle: t("Fixed assets") }, head(), h("div", { class: "msgbar" }, t("Welcome. Use the menu on the side to open the pages you have access to."))).el);
     if (!(e instanceof Error && /permission/i.test(e.message))) fail(e);
     return;
   }
   const cur = d.currency;
-  // Workspace tile: icon, label, big number (+ unit), a caption and an optional progress bar
-  const tile = (o: { label: string; value: string; unit?: string; icon: string; tone: string; href: string; caption?: string; bar?: number }) =>
-    h("a", { class: `tile2 tone-${o.tone}`, href: o.href },
-      h("div", { class: "t-body" },
-        h("div", { class: "t-lbl" }, o.label),
-        h("div", { class: "t-val" }, o.value, o.unit ? h("small", null, ` ${o.unit}`) : null),
-        o.bar !== undefined ? h("div", { class: "t-bar", role: "img", "aria-label": `${Math.round(o.bar)}%` }, h("i", { style: `width:${Math.max(0, Math.min(100, o.bar))}%` })) : null,
-        h("div", { class: "t-cap" }, o.caption ?? "\u00a0")));
-  const pctDep = d.cost > 0 ? (d.accum_dep / d.cost) * 100 : 0;
-  const tiles = h("div", { class: "tiles2" },
-    tile({ label: t("Active fixed assets"), value: fmtInt(d.asset_count), icon: "asset", tone: "blue", href: "#/assets", caption: t("{0} groups", d.by_category.length) }),
-    tile({ label: t("Acquisition cost"), value: fmtMoney(d.cost), unit: cur, icon: "list", tone: "teal", href: "#/reports/asset-summary", caption: t("Net of VAT") }),
-    tile({ label: t("Accumulated depreciation"), value: fmtMoney(d.accum_dep), unit: cur, icon: "calc", tone: "gray", href: "#/reports/depreciation-schedule", bar: pctDep, caption: t("{0}% of cost", Math.round(pctDep)) }),
-    tile({ label: t("Net book value"), value: fmtMoney(d.nbv), unit: cur, icon: "journal", tone: "green", href: "#/reports/asset-register", bar: 100 - pctDep, caption: t("{0}% of cost", Math.round(d.cost > 0 ? 100 - pctDep : 0)) }),
-    tile({ label: t("Open maintenance orders"), value: fmtInt(d.maint_open), icon: "wrench", tone: d.maint_overdue ? "amber" : "gray", href: "#/maintenance", caption: d.maint_overdue ? t("{0} overdue", d.maint_overdue) : t("None overdue") }),
-    tile({ label: t("Assets in employee custody"), value: fmtInt(d.custody_held), icon: "user", tone: "purple", href: "#/custody", caption: t("Not part of asset reports") }));
+  const cyc = d.cycle as Rec;
 
-  // by group bars
-  const max = Math.max(1, ...d.by_category.map((c: Rec) => c.cost));
-  const groups = d.by_category.length
-    ? h("div", null,
-        h("div", { class: "legend" }, h("span", null, h("i", { style: "background:#9cc8ec" }), t("Acquisition cost")), h("span", null, h("i", { style: "background:var(--blue)" }), t("Net book value"))),
-        ...d.by_category.map((c: Rec) => h("div", { class: "bar-row" }, h("span", { class: "name", title: c.name }, c.name),
-          h("div", { class: "track" }, h("div", { class: "fill2", style: `width:${(c.cost / max) * 100}%` }), h("div", { class: "fill", style: `width:${(c.nbv / max) * 100}%;position:relative` })),
-          h("span", { class: "amt" }, fmtMoney(c.nbv)))))
-    : h("div", { class: "empty" }, t("No fixed assets yet."));
+  // ---- quick actions: the things people start from here
+  const L = can("custody.manage") ? await lookups().catch(() => null) : null;
+  const act = (label: string, perm: string, go: string | (() => void), primary = false) => can(perm)
+    ? h(typeof go === "string" ? "a" : "button", { class: `btn ws-act ${primary ? "primary" : ""}`, ...(typeof go === "string" ? { href: go } : { type: "button", onclick: go }) }, label)
+    : null;
+  const actions = h("div", { class: "ws-actions" },
+    act(t("New fixed asset"), "assets.edit", "#/assets/new", true),
+    act(cyc.period ? t("Run depreciation for {0}", cyc.period.PeriodName) : t("Depreciation run"), "depreciation.run", cyc.period ? `#/depreciation?period=${cyc.period.PeriodID}` : "#/depreciation"),
+    act(t("New maintenance order"), "maintenance.edit", "#/maintenance/new"),
+    L ? act(t("Issue to employee"), "custody.manage", () => void issueDialog(L, {}, (c) => (location.hash = `#/custody/${c.CustodyID}`))) : null,
+    act(t("Reports"), "reports.view", "#/reports"));
 
-  // depreciation trend (SVG columns)
-  const trend = d.dep_trend as Rec[];
-  let trendEl: HTMLElement;
-  if (!trend.length) trendEl = h("div", { class: "empty" }, t("No depreciation has been posted yet."));
-  else {
-    const tm = Math.max(1, ...trend.map((x) => x.amt));
-    const W = 460, H = 150, bw = Math.min(36, (W - 20) / trend.length - 6);
-    const NS = "http://www.w3.org/2000/svg";
-    const el = (tag: string, attrs: Record<string, string>, text?: string) => {
-      const n = document.createElementNS(NS, tag);
-      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-      if (text !== undefined) n.textContent = text;
-      return n;
-    };
-    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": t("Posted depreciation by period") });
-    trend.forEach((x, i) => {
-      const bh = Math.max(2, (x.amt / tm) * (H - 34)); const bx = 10 + i * ((W - 20) / trend.length) + 3;
-      const rect = el("rect", { x: String(bx), y: String(H - 18 - bh), width: String(bw), height: String(bh), fill: "var(--blue)" });
-      rect.append(el("title", {}, `${x.name}: ${fmtMoney(x.amt)}`));
-      svg.append(rect, el("text", { x: String(bx + bw / 2), y: String(H - 4), "font-size": "10", "text-anchor": "middle", fill: "var(--ink-2)" }, String(x.name).slice(0, 3)));
-    });
-    trendEl = h("div", null, svg);
-  }
+  // ---- tiles: one number, one place to go
+  const tile = (o: { label: string; value: string; unit?: string; tone: string; href: string; caption?: string; perm?: string; alert?: boolean }) =>
+    can(o.perm) ? h("a", { class: `tile2 ws-tile tone-${o.tone} ${o.alert ? "alert" : ""}`, href: o.href },
+      h("div", { class: "t-body" }, h("div", { class: "t-lbl" }, o.label), h("div", { class: "t-val" }, o.value, o.unit ? h("small", null, ` ${o.unit}`) : null),
+        h("div", { class: "t-cap" }, o.caption ?? " "))) : null;
+  const tiles = h("div", { class: "tiles2 ws-tiles" },
+    tile({ label: t("Active fixed assets"), value: fmtInt(d.asset_count), tone: "blue", href: "#/assets", caption: t("{0} groups", d.by_category.length) }),
+    tile({ label: t("Net book value"), value: fmtMoney(d.nbv), unit: cur, tone: "green", href: "#/reports/asset-register",
+      caption: `${t("Cost")} ${fmtMoney(d.cost)} · ${t("Accum. dep.")} ${fmtMoney(d.accum_dep)}` }),
+    tile({ label: t("Unposted depreciation lines"), value: fmtInt(d.draft_lines), tone: d.draft_lines ? "amber" : "gray", href: "#/depreciation", perm: "depreciation.view",
+      caption: d.draft_lines ? t("Review and post") : t("Nothing waiting"), alert: !!d.draft_lines }),
+    d.maint_open !== null ? tile({ label: t("Open maintenance orders"), value: fmtInt(d.maint_open), tone: d.maint_overdue ? "amber" : "gray", href: "#/maintenance?status=Open",
+      caption: d.maint_overdue ? t("{0} overdue", d.maint_overdue) : t("None overdue"), alert: !!d.maint_overdue }) : null,
+    d.custody_held !== null ? tile({ label: t("Assets in employee custody"), value: fmtInt(d.custody_held), tone: "purple", href: "#/custody?status=Issued",
+      caption: d.custody_unsigned ? t("{0} without a signed form", d.custody_unsigned) : t("All forms signed") }) : null,
+    tile({ label: t("Under repair"), value: fmtInt(d.under_repair), tone: d.under_repair ? "amber" : "gray", href: "#/assets?status=Under%20Repair", caption: t("Out of service") }));
 
-  // periods to process
-  const todo = h("div", { class: "mini-list" });
-  if (d.next_period) todo.append(h("a", { href: `#/depreciation?period=${d.next_period.PeriodID}` }, h("span", null, t("Next period to depreciate")), h("b", null, d.next_period.PeriodName)));
-  else todo.append(h("div", { class: "row" }, h("span", null, t("Next period to depreciate")), h("b", null, "—")));
-  todo.append(h("a", { href: "#/depreciation" }, h("span", null, t("Unposted depreciation lines")), h("b", null, fmtInt(d.draft_lines))));
-  if (d.current_period) todo.append(h("div", { class: "row" }, h("span", null, t("Current period")), h("span", null, d.current_period.PeriodName, " ", pill(d.current_period.PeriodStatus))));
+  // ---- needs attention: decided by the server, already limited to what this user may act on
+  const mine = d.attention as { severity: string; text: string; args: (string | number)[]; detail: string; href: string; action: string }[];
+  const attention = mine.length
+    ? h("div", { class: "ws-list" }, ...mine.map((i) => h("a", { class: `ws-row ws-att sev-${i.severity}`, href: i.href },
+        h("span", { class: "ws-main" }, h("b", null, t(i.text, ...i.args.map((a) => (typeof a === "number" ? fmtInt(a) : a)))), i.detail ? h("small", null, t(i.detail)) : null),
+        h("span", { class: "ws-go" }, t(i.action)))))
+    : h("div", { class: "ws-clear" }, h("b", null, t("All clear")), h("div", null, t("Nothing needs your attention right now.")));
 
-  const warr = d.warranty.length
-    ? h("div", { class: "mini-list" }, ...d.warranty.map((w: Rec) => h("a", { href: `#/assets/${w.AssetID}` }, h("span", null, `${w.AssetCode} · ${w.AssetName}`), h("span", null, w.WarrantyExpiryDate))))
-    : h("div", { class: "empty" }, t("No warranties expiring in the next 90 days."));
+  // ---- the other lists, as tabs (Dynamics workspace style)
+  const row = (href: string, main: Node | string, sub: string, right: Node | string, cls = "") =>
+    h("a", { class: `ws-row ${cls}`, href }, h("span", { class: "ws-main" }, h("b", null, main), sub ? h("small", null, sub) : null), h("span", { class: "ws-meta" }, right));
+  const empty = (text: string) => h("div", { class: "empty" }, text);
+  const tabs: { id: string; label: string; count?: number; body: () => Node; perm?: string }[] = [
+    { id: "attention", label: t("Needs attention"), count: mine.length, body: () => attention },
+    { id: "maint", label: t("Maintenance due"), count: d.maint_due.length, perm: "maintenance.view", body: () => d.maint_due.length
+        ? h("div", { class: "ws-list" }, ...d.maint_due.map((m: Rec) => row(`#/maintenance/${m.MaintenanceID}`, `${m.MaintenanceNo} · ${m.Title}`, `${m.AssetCode} · ${nm(m, "AssetName")}`,
+            h("span", null, pill(m.Status), " ", h("span", { class: m.IsOverdue ? "neg" : "" }, fmtDate(m.ScheduledDate))))))
+        : empty(t("No open maintenance orders.")) },
+    { id: "warranty", label: t("Warranties"), count: d.warranty.length, body: () => d.warranty.length
+        ? h("div", { class: "ws-list" }, ...d.warranty.map((w: Rec) => row(`#/assets/${w.AssetID}`, `${w.AssetCode} · ${nm(w, "AssetName")}`, "", fmtDate(w.WarrantyExpiryDate))))
+        : empty(t("No warranties expiring in the next 90 days.")) },
+    { id: "custody", label: t("In custody"), count: d.custody_list.length, perm: "custody.view", body: () => d.custody_list.length
+        ? h("div", { class: "ws-list" }, ...d.custody_list.map((c: Rec) => row(`#/custody/${c.CustodyID}`, `${c.AssetCode} · ${nm(c, "AssetName")}`, `${c.CustodyNo} · ${nm(c, "EmployeeName")}`,
+            h("span", null, c.AttachmentCount ? pill("Attached", "ok") : pill("Missing", "warn"), " ", fmtDate(c.IssueDate)))))
+        : empty(t("No assets are in custody.")) },
+    { id: "recent", label: t("Recent activity"), body: () => d.recent.length
+        ? h("div", { class: "ws-list" }, ...d.recent.map((r: Rec) => row(`#/assets/${r.AssetID}`, `${r.AssetCode} · ${nm(r, "AssetName")}`, r.CreatedBy ? t("by {0}", r.CreatedBy) : "",
+            h("span", null, pill(r.TransactionType), " ", fmtDate(r.TransactionDate)))))
+        : empty(t("No transactions yet.")) },
+  ].filter((x) => can(x.perm));
+  const tabKey = "usool.ws.tab";
+  let active = (() => { try { return localStorage.getItem(tabKey) || "attention"; } catch { return "attention"; } })();
+  if (!tabs.some((x) => x.id === active)) active = "attention";
+  const strip = h("div", { class: "ws-tabs", role: "tablist" });
+  const panel = h("div", { class: "ws-panel", role: "tabpanel" });
+  const show = (id: string) => {
+    active = id; try { localStorage.setItem(tabKey, id); } catch { /* ignore */ }
+    clear(strip);
+    for (const x of tabs) strip.append(h("button", { class: `ws-tab ${x.id === id ? "active" : ""}`, type: "button", role: "tab", "aria-selected": String(x.id === id), onclick: () => show(x.id) },
+      x.label, x.count ? h("span", { class: `ws-badge ${x.id === "attention" ? "hot" : ""}` }, fmtInt(x.count)) : null));
+    clear(panel); panel.append(tabs.find((x) => x.id === id)!.body());
+  };
+  show(active);
 
-  const maint = d.maint_due.length
-    ? h("div", { class: "mini-list" }, ...d.maint_due.map((m: Rec) => h("a", { href: `#/maintenance/${m.MaintenanceID}` },
-        h("span", null, pill(m.Status), " ", `${m.AssetCode} · ${m.Title}`), h("span", { class: m.IsOverdue ? "neg" : "" }, m.ScheduledDate))))
-    : h("div", { class: "empty" }, t("No open maintenance orders."));
+  // ---- month-end: the depreciation cycle as three steps
+  const step = (state: "done" | "now" | "todo", title: string, sub: string, href?: string, perm?: string) =>
+    h("li", { class: `ws-step ${state}` }, h("span", { class: "ws-sn" }, String(++stepNo)),
+      h("div", null, href && state === "now" && can(perm) ? h("a", { href }, title) : h("b", null, title), h("small", null, sub)));
+  const p = cyc.period as Rec | null;
+  let stepNo = 0;
+  const cycle = h("ol", { class: "ws-steps" },
+    p ? step(cyc.drafts ? "done" : "now", t("Create the proposal for {0}", p.PeriodName), cyc.drafts ? t("{0} line(s) proposed", cyc.drafts) : t("Calculates the month's depreciation"), `#/depreciation?period=${p.PeriodID}`, "depreciation.run")
+      : step("done", t("Depreciation is up to date"), t("Every open period is posted")),
+    p ? step(cyc.drafts ? "now" : "todo", t("Review and post"), t("Writes the journal: expense / accumulated depreciation"), `#/depreciation?period=${p.PeriodID}`, "depreciation.post") : null,
+    step(cyc.closable.length ? "now" : "done", t("Close posted periods"), cyc.closable.length ? cyc.closable.map((x: Rec) => x.PeriodName).join(", ") : t("Nothing to close"), "#/periods", "periods.manage"));
+  const curP = d.current_period as Rec | null;
 
-  const recent = d.recent.length
-    ? h("div", { class: "mini-list" }, ...d.recent.map((r: Rec) => h("a", { href: `#/assets/${r.AssetID}` },
-        h("span", null, pill(r.TransactionType), " ", `${r.AssetCode} · ${r.AssetName}`), h("span", null, r.TransactionDate))))
-    : h("div", { class: "empty" }, t("No transactions yet."));
+  // ---- the book value as a statement: by group, country or branch, with the total ruled off
+  const money = (v: number) => h("td", { class: "num" }, fmtMoney(v));
+  const LK = await lookups().catch(() => null);
+  const country = (code: string) => { const c = LK?.countries.find((x) => x.code === code); return c ? (getLang() === "ar" ? c.nameAr : c.name) : code; };
+  const adjusted = Math.abs(d.value_adj || 0) > 0.004;
+  const views: Record<string, { label: string; head: string; rows: Rec[]; cell: (c: Rec) => Node }> = {
+    group: { label: "By group", head: "Fixed asset group", rows: d.by_category, cell: (c) => h("a", { href: `#/assets?category=${c.id}` }, c.name) },
+    ...(d.by_branch.length ? {
+      country: { label: "By country", head: "Country", rows: d.by_country, cell: (c: Rec) => h("a", { href: `#/reports/asset-summary?group_by=branch&country=${c.id}` }, country(c.id)) },
+      branch: { label: "By branch", head: "Branch", rows: d.by_branch, cell: (c: Rec) => h("a", { href: `#/reports/asset-register?branch=${c.id}` }, `${c.code} · ${c.name}`) },
+    } : {}),
+  };
+  const VKEY = "usool.ws.statement";
+  let view = (() => { try { return localStorage.getItem(VKEY) || "group"; } catch { return "group"; } })();
+  if (!views[view]) view = "group";
+  const statement = h("div");
+  const switcher = Object.keys(views).length > 1 ? h("div", { class: "ws-seg", role: "tablist" }) : null;
+  const drawStatement = () => {
+    const v = views[view];
+    clear(statement);
+    statement.append(h("table", { class: "ws-stmt" },
+      h("thead", null, h("tr", null, h("th", null, t(v.head)), h("th", { class: "num" }, t("Assets")), h("th", { class: "num" }, t("Cost")),
+        h("th", { class: "num" }, t(adjusted ? "Accum. dep. & impairment" : "Accum. depreciation")), h("th", { class: "num" }, t("Net book value")))),
+      h("tbody", null, ...v.rows.map((c) => h("tr", null, h("td", null, v.cell(c)), h("td", { class: "num" }, fmtInt(c.count)), money(c.cost), money(c.cost - c.nbv), money(c.nbv)))),
+      h("tfoot", null, h("tr", null, h("td", null, t("Total")), h("td", { class: "num" }, fmtInt(v.rows.reduce((n, c) => n + c.count, 0))),
+        money(v.rows.reduce((n, c) => n + c.cost, 0)), money(v.rows.reduce((n, c) => n + c.cost - c.nbv, 0)), money(v.rows.reduce((n, c) => n + c.nbv, 0))))));
+    if (switcher) {
+      clear(switcher);
+      for (const [k, x] of Object.entries(views)) switcher.append(h("button", { class: `ws-seg-b ${k === view ? "on" : ""}`, type: "button", role: "tab", "aria-selected": String(k === view),
+        onclick: () => { view = k; try { localStorage.setItem(VKEY, k); } catch { /* ignore */ } drawStatement(); } }, t(x.label)));
+    }
+  };
+  drawStatement();
+  const ytd = d.fiscal_year ? h("div", { class: "ws-ytd" },
+    h("span", null, t("Depreciation posted in {0}", d.fiscal_year), " ", h("b", null, `${fmtMoney(d.dep_ytd)} ${cur}`)),
+    d.last_posted ? h("span", null, t("Last period posted"), " ", h("b", null, d.last_posted.PeriodName)) : null) : null;
 
-  const card = (title: string, body: Node, more?: [string, string], span = 4) =>
-    h("div", { class: `card span-${span}` }, h("h3", null, h("span", null, title), more ? h("a", { href: more[1], style: "font-size:12px;font-weight:400" }, more[0]) : null), h("div", { class: "card-body" }, body));
-
-  const pg = page({ title: t("Fixed assets"), subtitle: t("Workspace") },
+  const card = (title: string, body: Node, more?: [string, string]) =>
+    h("section", { class: "card ws-card" }, h("h3", null, h("span", null, title), more ? h("a", { href: more[1], class: "ws-more" }, more[0]) : null), h("div", { class: "card-body" }, body));
+  const pg = page({ title: t("Home"), subtitle: t("Fixed assets") },
+    h("div", { class: "ws-top" }, head(curP ? h("span", { class: "ws-period" }, ` · ${t("Current period")} ${curP.PeriodName} `, pill(curP.PeriodStatus)) : null), actions),
     tiles,
-    h("div", { class: "dash" },
-      card(t("Net book value by group"), groups, [t("Open register"), "#/reports/asset-register"], 7),
-      card(t("Depreciation posted by period"), trendEl, [t("Schedule"), "#/reports/depreciation-schedule"], 5),
-      card(t("To do"), todo, undefined, 4),
-      card(t("Maintenance due"), maint, [t("All"), "#/maintenance"], 4),
-      card(t("Warranties expiring soon"), warr, undefined, 4),
-      card(t("Recent transactions"), recent, [t("All"), "#/transactions"], 12)));
+    h("div", { class: "ws-grid" },
+      h("section", { class: "card ws-card ws-center" }, strip, panel),
+      can("depreciation.view") ? h("div", { class: "ws-side" }, card(t("Month-end"), cycle, [t("Periods"), "#/periods"])) : null),
+    d.by_category.length ? h("section", { class: "card ws-card ws-statement" }, h("h3", null, h("span", null, t("Fixed assets")), switcher,
+      can("reports.view") ? h("a", { href: "#/reports/asset-register", class: "ws-more" }, t("Asset register")) : null), ytd, statement) : null);
   clear(root); root.append(pg.el);
 }

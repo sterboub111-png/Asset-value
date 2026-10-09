@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from .assets import get_asset
+from .book import values
 from .common import ApiError, actor, audit, now, num, one, parse_date, r2, rows
-from .depreciation import _fully_depreciated
+from .depreciation import DEPRECIATING, _fully_depreciated
 from .periods import period_for_date
 from .settings import get_settings
 
@@ -19,7 +20,7 @@ def dispose_asset(con, asset_id: int, data: dict) -> dict:
     d = parse_date(data.get("TransactionDate"), "Disposal date", True)
     if d < a["AcquisitionDate"]:
         raise ApiError("Disposal date cannot be before the acquisition date")
-    proceeds = num(data.get("DisposalProceeds"), "Sale proceeds", 0, 0)
+    proceeds = r2(num(data.get("DisposalProceeds"), "Sale proceeds", 0, 0))   # cents only, so the journal always balances
     per = period_for_date(con, d)
     if per and per["PeriodStatus"] != "OPEN":
         raise ApiError("The period of the disposal date is closed")
@@ -30,7 +31,11 @@ def dispose_asset(con, asset_id: int, data: dict) -> dict:
                               WHERE D.AssetID=? AND D.PostingStatus='POSTED'""", (asset_id,), raw=True)["e"]
     if last_posted and d <= last_posted:
         raise ApiError("Depreciation is already posted after this date. Choose a later disposal date.")
-    if a["MethodCode"] == "SL" and not _fully_depreciated(con, a):
+    later = one(con, "SELECT MAX(TransactionDate) d FROM tbl_AssetTransactions WHERE AssetID=? AND TransactionType IN ('ADDITION','IMPAIRMENT','REVALUATION')",
+                (asset_id,), raw=True)["d"]
+    if later and d < later:
+        raise ApiError("An addition or revaluation is recorded after this date. Choose a later date.")
+    if a["MethodCode"] in DEPRECIATING and not _fully_depreciated(con, a):
         pend = rows(con, """SELECT P.PeriodName FROM tbl_DepreciationPeriods P WHERE P.EndDate>=? AND P.StartDate<?
             AND NOT EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.AssetID=? AND D.PeriodID=P.PeriodID AND D.PostingStatus='POSTED')
             ORDER BY P.StartDate""", (start, mstart, asset_id))
@@ -39,10 +44,12 @@ def dispose_asset(con, asset_id: int, data: dict) -> dict:
             raise ApiError("Post depreciation first for: " + ", ".join(eligible[:3]) + ("…" if len(eligible) > 3 else ""))
     if con.execute("SELECT 1 FROM tbl_Depreciation WHERE AssetID=? AND PostingStatus='DRAFT'", (asset_id,)).fetchone():
         con.execute("DELETE FROM tbl_Depreciation WHERE AssetID=? AND PostingStatus='DRAFT'", (asset_id,))
-    accum = a["AccumDep"]
-    cost = a["AcquisitionCost"]
-    nbv = r2(cost - accum)
+    v = values(con, asset_id)
+    cost, accum, value_adj = v["cost"], v["accum"], v["value_adj"]
+    nbv = r2(cost - accum + value_adj)
     gain = r2(proceeds - nbv)
+    # the accumulated depreciation account also carries the impairments (credit) and revaluations (debit) of the asset
+    accum_net = r2(accum - value_adj)
     cat = one(con, "SELECT * FROM tbl_AssetCategories WHERE CategoryID=?", (a["CategoryID"],))
     clearing = get_settings(con).get("DisposalClearingAccountID")
     if not (cat["AssetAccountID"] and cat["AccumDepAccountID"]):
@@ -60,7 +67,7 @@ def dispose_asset(con, asset_id: int, data: dict) -> dict:
                        a["CostCenterID"], data.get("ReferenceNumber") or None, data.get("Notes") or None, now(), actor()))
     tx = cur.lastrowid
     desc = f"Disposal - {a['AssetCode']} - {a['AssetName']}"
-    lines = [(cat["AccumDepAccountID"], accum, 0), (cat["AssetAccountID"], 0, cost)]
+    lines = [(cat["AccumDepAccountID"], max(accum_net, 0), max(-accum_net, 0)), (cat["AssetAccountID"], 0, cost)]
     if proceeds:
         lines.append((int(clearing), proceeds, 0))
     if gain > 0:

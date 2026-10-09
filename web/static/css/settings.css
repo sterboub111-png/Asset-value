@@ -48,3 +48,8 @@ kbd { display: inline-block; min-width: 24px; text-align: center; padding: 2px 7
   .settings-nav a { border-inline-start: 0; border-bottom: 3px solid transparent; white-space: nowrap; padding-inline-start: 16px; } .settings-nav a.active { border-bottom-color: var(--blue); }
 }
 
+/* the branches a user works in (users page) */
+.br-pick { margin-top: 14px; }
+.br-note { margin: 4px 0 8px; color: var(--ink-3); font-size: 13px; }
+.br-list { max-height: 280px; overflow: auto; margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+.br-list .perm-head { margin-top: 6px; }

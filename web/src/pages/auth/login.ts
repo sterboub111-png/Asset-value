@@ -1,6 +1,6 @@
 import { api } from "../../core/api.js";
 import { getLang, setLang, t } from "../../core/i18n.js";
-import { Me, getTheme, initials, setTheme } from "../../core/session.js";
+import { Me, initials, nextTheme, setTheme, themeIcon, themeLabel } from "../../core/session.js";
 import { clear, h, icon } from "../../ui/index.js";
 
 const LAST = "gooya.lastUser";
@@ -74,7 +74,7 @@ export function showLogin(app: HTMLElement, needsSetup: boolean, onDone: (me: Me
     chip.style.display = second ? "" : "none";
     if (needsSetup) { title.textContent = t("Welcome to Usool"); sub.textContent = t("Create the administrator account to get started."); btnLabel.textContent = t("Create administrator"); }
     else if (next === "user") { title.textContent = t("Sign in"); sub.textContent = t("Enter your user name and password."); btnLabel.textContent = t("Next"); }
-    else { drawChip(); title.textContent = known ? `${greeting()}, ${shownName(known).split(" ")[0]}` : t("Enter password"); sub.textContent = t("Enter the password for your account."); btnLabel.textContent = t("Sign in"); }
+    else { drawChip(); title.textContent = known ? `${greeting()}${getLang() === "ar" ? "، " : ", "}${shownName(known).split(" ")[0]}` : t("Enter password"); sub.textContent = t("Enter the password for your account."); btnLabel.textContent = t("Sign in"); }
     if (animate) { panes.classList.remove("swap"); void panes.offsetWidth; panes.classList.add("swap"); }
     (needsSetup ? full.input : next === "user" ? user.input : pass.input).focus();
   }
@@ -114,7 +114,8 @@ export function showLogin(app: HTMLElement, needsSetup: boolean, onDone: (me: Me
 
   // page chrome: language and theme, a small clock, footer
   const langBtn = h("button", { class: "login-tool", type: "button", onclick: () => { setLang(getLang() === "ar" ? "en" : "ar"); rerender(); } }, icon("globe"), getLang() === "ar" ? "English" : "العربية");
-  const themeBtn = h("button", { class: "login-tool", type: "button", "aria-label": t("Dark mode"), title: t("Dark mode"), onclick: () => { setTheme(getTheme() === "dark" ? "light" : "dark"); themeBtn.replaceChildren(icon(getTheme() === "dark" ? "sun" : "moon")); } }, icon(getTheme() === "dark" ? "sun" : "moon"));
+  const themeBtn = h("button", { class: "login-tool", type: "button", "aria-label": t(themeLabel()), title: t(themeLabel()), onclick: () => {
+    setTheme(nextTheme()); themeBtn.replaceChildren(icon(themeIcon())); themeBtn.title = t(themeLabel()); } }, icon(themeIcon()));
   const clock = h("div", { class: "login-clock" }, h("b", null), h("span", null));
   const tick = () => {
     const d = new Date(); const loc = getLang() === "ar" ? "ar-SA-u-nu-latn" : "en-GB";
@@ -124,8 +125,16 @@ export function showLogin(app: HTMLElement, needsSetup: boolean, onDone: (me: Me
   tick();
   const timer = window.setInterval(() => { if (!clock.isConnected) window.clearInterval(timer); else tick(); }, 20000);
 
-  app.append(h("div", { class: "login-shell" }, h("div", { class: "login-bg", "aria-hidden": "true" }, h("i"), h("i"), h("i")),
-    h("main", { class: "login-main" }, h("div", { class: "login-tools" }, langBtn, themeBtn), form),
-    clock, h("footer", { class: "login-foot" }, `${t("Usool")} · ${t("Fixed asset register")}`)));
+  // a classic two-part page: the brand panel (what this is, the date) and a plain white sign-in column
+  const brand = h("aside", { class: "login-brand" },
+    h("div", { class: "lb-name" }, h("span", { class: "lb-logo" }, icon("asset")), h("span", null, t("Usool"))),
+    h("div", { class: "lb-mid" },
+      h("h2", null, t("Your fixed assets, kept to the books.")),
+      h("p", null, t("Register, depreciate, maintain and report every asset, on this computer and under your control.")),
+      h("ul", null, h("li", null, t("Monthly depreciation with balanced journals")), h("li", null, t("Reports and analysis in Arabic and English")),
+        h("li", null, t("Custody, maintenance and VAT in one register")))),
+    h("div", { class: "lb-foot" }, clock, h("span", null, t("Runs locally: your data stays on this computer"))));
+  app.append(h("div", { class: "login-shell" }, brand,
+    h("main", { class: "login-main" }, h("div", { class: "login-tools" }, langBtn, themeBtn), form)));
   go(step, false);
 }

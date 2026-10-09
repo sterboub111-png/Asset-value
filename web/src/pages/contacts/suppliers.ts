@@ -1,7 +1,7 @@
 import { api, invalidateLookups, lookups } from "../../core/api.js";
 import { t } from "../../core/i18n.js";
 import type { Col, Rec } from "../../core/types.js";
-import { DataGrid, FieldDef, Form, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtMoney, guard, h, nm, opts, page, pill, ribbon, toast } from "../../ui/index.js";
+import { DataGrid, combo, FieldDef, Form, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtMoney, guard, h, nm, opts, page, pill, ribbon, toast } from "../../ui/index.js";
 
 type Args = { args: string[]; query: URLSearchParams };
 
@@ -68,8 +68,8 @@ export async function suppliersListPage(root: HTMLElement, _a: Args): Promise<vo
     { key: "AssetCount", label: "Assets", type: "int" }, { key: "PurchaseTotal", label: "Purchases", type: "money" },
     { key: "IsActive", label: "Status", render: (r) => pill(r.IsActive ? "Active" : "Inactive") },
   ];
-  const typeSel = h("select", { class: "gt-input", style: "width:190px", "aria-label": t("Type") }, h("option", { value: "" }, t("All types")), ...typeOpts(L).map((o) => h("option", { value: o.value }, o.label)));
-  const actSel = h("select", { class: "gt-input", style: "width:150px", "aria-label": t("Status") }, h("option", { value: "" }, t("All statuses")), h("option", { value: "1" }, t("Active")), h("option", { value: "0" }, t("Inactive")));
+  const typeSel = combo(typeOpts(L), { placeholder: t("All types"), label: t("Type"), width: 200 });
+  const actSel = combo([{ value: "1", label: t("Active") }, { value: "0", label: t("Inactive") }], { placeholder: t("All statuses"), label: t("Status"), width: 160 });
   const grid = new DataGrid({ columns: cols, rows: [], totals: ["PurchaseTotal"], exportName: "suppliers", tools: [typeSel, actSel], onOpen: (r) => (location.hash = `#/suppliers/${r.SupplierID}`), empty: "No suppliers yet." });
   const load = async () => { try { grid.setRows(await api.get(`/api/suppliers?type=${encodeURIComponent(typeSel.value)}&active=${actSel.value}`)); } catch (e) { fail(e); } };
   typeSel.onchange = actSel.onchange = load;

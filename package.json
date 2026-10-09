@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc -p .",
-    "test": "python -m tests.test_flow && python -m tests.test_auth && python -m tests.test_review"
+    "test": "python3 -m tests.test_flow && python3 -m tests.test_auth && python3 -m tests.test_review && python3 -m tests.test_integrity && python3 -m tests.test_import && python3 -m tests.test_counts && python3 -m tests.test_valuation && python3 -m tests.test_scope && python3 -m tests.test_storage",
+    "test:pg": "USOOL_TEST_DATABASE_URL=postgresql:///usool_test sh -c '.venv/bin/python -m tests.test_flow && .venv/bin/python -m tests.test_auth && .venv/bin/python -m tests.test_review && .venv/bin/python -m tests.test_integrity && .venv/bin/python -m tests.test_import && .venv/bin/python -m tests.test_counts && .venv/bin/python -m tests.test_valuation && .venv/bin/python -m tests.test_scope && .venv/bin/python -m tests.test_storage'"
   },
   "keywords": [],
   "author": "",

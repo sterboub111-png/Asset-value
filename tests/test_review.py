@@ -8,11 +8,9 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from app import db
+from tests.fixture import fresh_db
 
-tmp = Path(tempfile.mkdtemp())
-shutil.copy(db.DB_PATH, tmp / "r.db")
-db.DB_PATH = tmp / "r.db"
-db.DATA_DIR = tmp
+tmp = fresh_db("r.db")
 from app import auth, reports, server, services as s  # noqa: E402
 
 s.db.ROOT = tmp
@@ -226,6 +224,30 @@ assert codes == real == [401, 401, 401, 401, 401, 429], (codes, real)
 zz = call("POST", "/api/auth/login", {"UserName": "bob", "Password": "Bare12345"})[2].split(";")[0]
 outs = [call("POST", "/api/auth/password", {"Current": "wrong-pass1", "New": "Another123"}, cookie=zz)[0] for _ in range(5)]
 assert outs == [400] * 5 and call("POST", "/api/auth/login", {"UserName": "bob", "Password": "Bare12345"})[0] == 429, "password guessing is throttled"
+# reports keep the contact / custody / maintenance permissions and send only the shown columns
+rep = call("POST", "/api/roles", {"RoleName": "ReportsOnly", "permissions": ["reports.view", "assets.view"]}, cookie=admin)[1]["RoleID"]
+call("POST", "/api/users", {"UserName": "rita", "FullName": "Rita", "RoleID": rep, "Password": "Reports123"}, cookie=admin)
+rita = call("POST", "/api/auth/login", {"UserName": "rita", "Password": "Reports123"})[2].split(";")[0]
+for rid in ("employees-directory", "custody-by-employee", "suppliers-directory", "maintenance-history"):
+    assert call("GET", f"/api/reports/{rid}", cookie=rita)[0] == 403, rid
+assert call("GET", "/api/reports/asset-register", cookie=rita)[0] == 200
+assert "employees-directory" not in [r["id"] for r in call("GET", "/api/reports", cookie=rita)[1]]
+s.save_employee(con, {"EmployeeName": "Id Holder", "NationalID": "1098765432"})
+emp_rows = call("GET", "/api/reports/employees-directory", cookie=admin)[1]["rows"]
+assert emp_rows and all("NationalID" not in r for r in emp_rows), "hidden columns are not sent"
+# fractional sale proceeds still give a balanced disposal journal
+fr = s.save_asset(con, {"AssetName": "Cents", "CategoryID": cat("KIT"), "AcquisitionDate": "2028-12-05", "PurchaseAmount": 1000, "VatApplicable": 0})
+s.dispose_asset(con, fr["AssetID"], {"TransactionDate": "2028-12-20", "DisposalProceeds": "100.555"})
+dr, cr = con.execute("SELECT SUM(DebitAmount), SUM(CreditAmount) FROM tbl_DepreciationJournal J JOIN tbl_AssetTransactions T ON T.TransactionID=J.TransactionID "
+                     "WHERE T.AssetID=?", (fr["AssetID"],)).fetchone()
+assert abs(dr - cr) < 1e-9, (dr, cr)
+# an asset that started before the first period needs its opening accumulated depreciation
+first = s.one(con, "SELECT PeriodID, StartDate FROM tbl_DepreciationPeriods ORDER BY StartDate LIMIT 1", raw=True)
+old = s.save_asset(con, {"AssetName": "Old oven", "CategoryID": cat("KIT"), "AcquisitionDate": "2020-01-01", "PurchaseAmount": 12000, "VatApplicable": 0})
+ln = next(x for x in s.propose(con, first["PeriodID"]) if x["AssetID"] == old["AssetID"])
+assert not ln["eligible"] and "opening accumulated depreciation" in ln["reason"], ln
+s.save_asset(con, {**s.one(con, "SELECT * FROM tbl_Assets WHERE AssetID=?", (old["AssetID"],), raw=True), "PurchaseAmount": 12000, "VatApplicable": 0, "OpeningAccumDep": 4000}, old["AssetID"])
+assert next(x for x in s.propose(con, first["PeriodID"]) if x["AssetID"] == old["AssetID"])["eligible"], "eligible once the opening balance is entered"
 httpd.shutdown()
 shutil.rmtree(tmp, ignore_errors=True)
 print("All review regression tests passed")

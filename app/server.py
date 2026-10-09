@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import mimetypes
 import re
-import sqlite3
 import sys
 import traceback
 from http.cookies import SimpleCookie
@@ -13,6 +12,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import auth, db, scheduler, services as s
+from .services import branches
 from .api import routes
 from .api.router import ROUTES, Ctx
 
@@ -92,6 +92,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(403, {"error": "Forbidden"})   # a page on another site cannot set this header
         s.set_lang(self.headers.get("X-Lang", "en"))
         s.set_actor(None)
+        s.set_scope([])   # nothing in scope until the user is known (threads are reused between requests)
         public = (self.command, u.path) in (("POST", "/api/auth/login"), ("POST", "/api/auth/setup"), ("GET", "/api/auth/status"))
         token = self._session_token()
         con = db.connect()
@@ -101,6 +102,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(401, {"error": "Please sign in", "auth": "required"})
             if user:
                 s.set_actor(user["UserName"])
+                branches.apply_scope(con, user["UserID"], self.headers.get("X-Scope"))
                 # an account flagged "must change password" may only change it (or sign out)
                 if user["MustChangePassword"] and (self.command, u.path) not in (("POST", "/api/auth/password"), ("POST", "/api/auth/logout"), ("GET", "/api/auth/me"), ("GET", "/api/auth/status")):
                     return self._json(403, {"error": "You must change your password first", "auth": "password"})
@@ -116,6 +118,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._download(u.path)
             if u.path.startswith("/api/backups/") and u.path.endswith("/download") and self.command == "GET":
                 return self._download_backup(u.path)
+            if u.path == "/api/assets/import-template" and self.command == "GET":
+                from .services import importer
+                lang = "ar" if self.headers.get("X-Lang") == "ar" or parse_qs(u.query).get("lang") == ["ar"] else "en"
+                return self._send(200, importer.template(con, lang), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  {"Content-Disposition": "attachment; filename=\"usool-assets-import.xlsx\""})
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
@@ -144,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
                     except s.ApiError as e:
                         con.rollback()
                         return self._json(e.status, {"error": str(e)})
-                    except sqlite3.Error as e:
+                    except db.DatabaseError as e:
                         con.rollback()
                         return self._json(400, {"error": f"Database error: {e}"})
                     except Exception:  # noqa: BLE001
@@ -202,13 +209,13 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port: int = 8742, open_browser: bool = True) -> None:
     db.init_db()
-    if not db.DB_PATH.exists() or not _has_data():
+    if (not db.is_pg() and not db.DB_PATH.exists()) or not _has_data():
         if db.EXPORT_PATH.exists():
             print("First run: importing data from Access export…", db.migrate_from_access())
     scheduler.start()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{port}/"
-    print(f"Usool is running at {url}  (Ctrl+C to stop)")
+    print(f"Usool is running at {url}  (Ctrl+C to stop)  ·  database: {'PostgreSQL ' if db.is_pg() else 'SQLite '}{db.describe()}")
     if open_browser:
         import webbrowser
         webbrowser.open(url)

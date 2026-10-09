@@ -1,7 +1,7 @@
 import { api, lookups } from "../../core/api.js";
 import { addSupplierShortcut, supplierOptions } from "../contacts/suppliers.js";
 import { t } from "../../core/i18n.js";
-import { DataGrid, Form, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtDate, fmtMoney, guard, h, page, pill, ribbon, toast, today } from "../../ui/index.js";
+import { DataGrid, combo, Form, onSave, redirectIf, clear, confirmDialog, dialog, fail, fastTab, fmtDate, fmtMoney, guard, h, page, pill, ribbon, toast, today } from "../../ui/index.js";
 const typeOpts = (L) => L.maint_types.map((x) => ({ value: x, label: t(x) }));
 const prioOpts = (L) => L.maint_priorities.map((x) => ({ value: x, label: t(x) }));
 export function statusPill(m) {
@@ -42,9 +42,9 @@ export async function maintenanceListPage(root, a) {
         { key: "Priority", label: "Priority", render: (r) => pill(r.Priority) },
         { key: "Status", label: "Status", render: statusPill }, { key: "Vendor", label: "Vendor" }, { key: "Cost", label: "Cost", type: "money" },
     ];
-    const statusSel = h("select", { class: "gt-input", style: "width:170px", "aria-label": t("Status") }, h("option", { value: "Open" }, t("Open orders")), h("option", { value: "" }, t("All statuses")), ...L.maint_statuses.map((s) => h("option", { value: s }, t(s))));
+    const statusSel = combo([{ value: "Open", label: t("Open orders") }, ...L.maint_statuses.map((s) => ({ value: s, label: t(s) }))], { placeholder: t("All statuses"), label: t("Status"), width: 170 });
     statusSel.value = a.query.get("status") ?? "Open";
-    const typeSel = h("select", { class: "gt-input", style: "width:160px", "aria-label": t("Type") }, h("option", { value: "" }, t("All types")), ...typeOpts(L).map((o) => h("option", { value: o.value }, o.label)));
+    const typeSel = combo(typeOpts(L), { placeholder: t("All types"), label: t("Type"), width: 170 });
     const grid = new DataGrid({ columns: cols, rows: [], totals: ["Cost"], exportName: "maintenance", tools: [statusSel, typeSel], onOpen: (r) => (location.hash = `#/maintenance/${r.MaintenanceID}`), empty: "No maintenance orders match the filter." });
     const load = async () => { try {
         grid.setRows(await api.get(`/api/maintenance?status=${statusSel.value}&type=${typeSel.value}`));

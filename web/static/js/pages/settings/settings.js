@@ -17,6 +17,7 @@ export const SETTINGS_SECTIONS = [
     { id: "parameters", label: "Fixed asset parameters", group: "company", perm: "settings.view" },
     { id: "tax", label: "Tax (VAT)", group: "company", perm: "settings.view" },
     { id: "currencies", label: "Currencies", group: "company", perm: "settings.view" },
+    { id: "branches", label: "Branches", group: "company", perm: "settings.view" },
     { id: "categories", label: "Fixed asset groups", group: "setup", perm: "settings.view" },
     { id: "methods", label: "Depreciation methods", group: "setup", perm: "settings.view" },
     { id: "locations", label: "Locations", group: "setup", perm: "settings.view" },
