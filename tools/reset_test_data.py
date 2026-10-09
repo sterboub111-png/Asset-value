@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 from app import db, services as s  # noqa: E402
 
 OPERATIONAL = ["tbl_AssetCountLines", "tbl_AssetCounts", "tbl_DepreciationJournal", "tbl_Depreciation", "tbl_AssetAttachments", "tbl_AssetCustody", "tbl_Maintenance",
-               "tbl_AssetTransactions", "tbl_Assets", "tbl_AuditLog"]
+               "tbl_AssetTransactions", "tbl_Assets", "tbl_AuditLog"]  # children first
 CONTACTS = ["tbl_Suppliers", "tbl_Employees"]
 
 
@@ -34,21 +34,25 @@ def main(keep_contacts: bool) -> int:
         s._remove_file(p)
     for t in tables:
         con.execute(f"DELETE FROM {t}")
-        con.execute("DELETE FROM sqlite_sequence WHERE name=?", (t,))
+        if not db.is_pg():
+            con.execute("DELETE FROM sqlite_sequence WHERE name=?", (t,))
     for t, col in (("tbl_Locations", "LocationCode"), ("tbl_CostCenters", "CostCenterCode")):
         con.execute(f"DELETE FROM {t} WHERE {col} LIKE 'TEST-%'")
-        if not con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]:
+        if not db.is_pg() and not con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]:
             con.execute("DELETE FROM sqlite_sequence WHERE name=?", (t,))
+    if db.is_pg():   # numbering continues after the highest key left (none: from 1)
+        db._pg.reset_sequences(con, db.primary_keys())
     con.execute("UPDATE tbl_DepreciationPeriods SET PeriodStatus='OPEN'")
     con.commit()
 
     # ---- consistency checks
     problems = []
-    if con.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-        problems.append("integrity_check failed")
-    fk = con.execute("PRAGMA foreign_key_check").fetchall()
-    if fk:
-        problems.append(f"{len(fk)} foreign key violation(s)")
+    if not db.is_pg():   # PostgreSQL enforces both on every write
+        if con.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            problems.append("integrity_check failed")
+        fk = con.execute("PRAGMA foreign_key_check").fetchall()
+        if fk:
+            problems.append(f"{len(fk)} foreign key violation(s)")
     left = {k: v for k, v in counts(con, tables).items() if v}
     if left:
         problems.append(f"rows left: {left}")
@@ -60,7 +64,9 @@ def main(keep_contacts: bool) -> int:
     leftovers = [p for p in att_root.rglob("*") if p.is_file()]
     if leftovers:
         problems.append(f"{len(leftovers)} attachment file(s) left on disk")
-    con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    if not db.is_pg():
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    con.commit()
     print(f"removed {len(files)} attachment file(s)")
     if problems:
         print("PROBLEMS:", "; ".join(problems))

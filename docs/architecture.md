@@ -72,3 +72,5 @@ docs/                      this documentation
 - **Bilingual data:** master data and assets carry `<Field>` and `<Field>Ar`; `localize()` swaps them by request language.
   UI strings are keys in English; `core/ar.ts` maps them to Arabic (generated from `tools/gen_ar.py`).
 - **Everything is local and private:** no telemetry, no CDN, fonts and icons are inline.
+- **One SQL for two databases.** SQLite for a single computer and the tests, PostgreSQL for many users and the cloud; `app/dbpg.py` adapts
+  the SQL at the edge so the services stay database-neutral.

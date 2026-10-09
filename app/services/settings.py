@@ -1,8 +1,9 @@
 """Settings, master data (groups, locations, ...) and the lookup bundle sent to the UI."""
 from __future__ import annotations
 
+from .. import db
+
 import re
-import sqlite3
 from pathlib import Path
 
 from .branches import check_country, countries
@@ -107,8 +108,8 @@ def master_save(con, name: str, data: dict, rec_id: int | None = None) -> dict:
             con.execute(f"UPDATE {m['table']} SET {','.join(k + '=?' for k in vals)} WHERE {m['pk']}=?",
                         list(vals.values()) + [rec_id])
             audit(con, "UPDATE", m["table"], rec_id, str(vals.get(m["code"], "")))
-    except sqlite3.IntegrityError as e:
-        raise ApiError("Code already exists or a required value is missing" if "UNIQUE" in str(e) else str(e))
+    except db.IntegrityError as e:
+        raise ApiError("Code already exists or a required value is missing" if "unique" in str(e).lower() else str(e))
     con.commit()
     return one(con, f"SELECT * FROM {m['table']} WHERE {m['pk']}=?", (rec_id,), raw=True)
 

@@ -40,7 +40,7 @@ def dashboard(con) -> dict:
         (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='POSTED')
         ORDER BY P.StartDate LIMIT 1""")
     warranty = rows(con, f"""SELECT AssetID,AssetCode,AssetName,AssetNameAr,WarrantyExpiryDate FROM tbl_Assets A WHERE AssetStatus<>'Disposed'
-        AND WarrantyExpiryDate IS NOT NULL AND WarrantyExpiryDate BETWEEN ? AND date(?,'+90 day'){sc} ORDER BY WarrantyExpiryDate""", (today, today))
+        AND WarrantyExpiryDate IS NOT NULL AND WarrantyExpiryDate BETWEEN ? AND ?{sc} ORDER BY WarrantyExpiryDate""", (today, date.fromordinal(date.today().toordinal() + 90).isoformat()))
     return {
         "asset_count": len(assets), "cost": r2(cost), "accum_dep": r2(acc), "value_adj": r2(adj), "nbv": r2(cost - acc + adj),
         "branches": len({a["BranchID"] for a in assets if a.get("BranchID")}),
@@ -108,7 +108,7 @@ def _cycle(con, next_p: dict | None, today: str) -> dict:
     out["closable"] = rows(con, """SELECT P.PeriodID, P.PeriodName FROM tbl_DepreciationPeriods P WHERE P.PeriodStatus='OPEN' AND P.EndDate<?
         AND EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='POSTED')
         AND NOT EXISTS (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='DRAFT')
-        AND (? IS NULL OR P.StartDate<?) ORDER BY P.StartDate""", (month_start, next_p["StartDate"] if next_p else None, next_p["StartDate"] if next_p else None))
+        AND P.StartDate<? ORDER BY P.StartDate""", (month_start, next_p["StartDate"] if next_p else "9999-12-31"))
     return out
 
 
@@ -119,8 +119,7 @@ _checks_cache: dict = {"key": None, "failed": []}
 def failed_checks(con) -> list[dict]:
     """Integrity checks that fail; recomputed only when the data changed (every change writes the audit log)."""
     from .integrity import run_checks
-    key = con.execute("SELECT (SELECT COALESCE(MAX(LogID),0) FROM tbl_AuditLog), (SELECT COUNT(*) FROM tbl_DepreciationJournal), date('now')").fetchone()
-    key = tuple(key)
+    key = tuple(con.execute("SELECT (SELECT COALESCE(MAX(LogID),0) FROM tbl_AuditLog), (SELECT COUNT(*) FROM tbl_DepreciationJournal)").fetchone()) + (date.today(),)
     if _checks_cache["key"] != key:
         _checks_cache.update(key=key, failed=[c for c in run_checks(con) if not c["ok"]])
     return _checks_cache["failed"]

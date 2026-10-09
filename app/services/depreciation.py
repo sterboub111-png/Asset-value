@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 
+from .. import db
 from .book import VALUE_IN
 from .common import ApiError, actor, audit, now, one, r2, rows, scope_sql
 
@@ -181,14 +182,17 @@ def run_depreciation(con, period_id: int, asset_ids: list[int] | None = None) ->
     wanted = set(asset_ids or [])
     lines = [ln for ln in propose(con, period_id) if ln["eligible"] and (not wanted or ln["AssetID"] in wanted)]
     ts, who = now(), actor()
-    con.executemany("DELETE FROM tbl_Depreciation WHERE AssetID=? AND PeriodID=? AND PostingStatus='DRAFT'",
-                    [(ln["AssetID"], period_id) for ln in lines])
-    con.executemany("""INSERT INTO tbl_Depreciation(AssetID,PeriodID,AcquisitionCost,ResidualValue,DepreciableAmount,
-        UsefulLifeYears,DepreciationRate,OpeningAccumDep,OpeningNBV,PeriodDepreciation,ClosingAccumDep,ClosingNBV,
-        PostingStatus,CreatedAt,CreatedBy) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'DRAFT',?,?)""",
-                    [(ln["AssetID"], period_id, ln["AcquisitionCost"], ln["ResidualValue"], ln["DepreciableAmount"],
-                      ln["UsefulLifeYears"], ln["DepreciationRate"], ln["OpeningAccumDep"], ln["OpeningNBV"],
-                      ln["PeriodDepreciation"], ln["ClosingAccumDep"], ln["ClosingNBV"], ts, who) for ln in lines])
+    if wanted:
+        con.executemany("DELETE FROM tbl_Depreciation WHERE AssetID=? AND PeriodID=? AND PostingStatus='DRAFT'", [(ln["AssetID"], period_id) for ln in lines])
+    else:   # the whole period in scope is proposed again
+        con.execute(f"""DELETE FROM tbl_Depreciation WHERE PeriodID=? AND PostingStatus='DRAFT'
+            AND AssetID IN (SELECT A.AssetID FROM tbl_Assets A WHERE 1=1{scope_sql('A')})""", (period_id,))
+    db.bulk_insert(con, "tbl_Depreciation", ["AssetID", "PeriodID", "AcquisitionCost", "ResidualValue", "DepreciableAmount", "UsefulLifeYears",
+                                             "DepreciationRate", "OpeningAccumDep", "OpeningNBV", "PeriodDepreciation", "ClosingAccumDep", "ClosingNBV",
+                                             "PostingStatus", "CreatedAt", "CreatedBy"],
+                   [(ln["AssetID"], period_id, ln["AcquisitionCost"], ln["ResidualValue"], ln["DepreciableAmount"],
+                     ln["UsefulLifeYears"], ln["DepreciationRate"], ln["OpeningAccumDep"], ln["OpeningNBV"],
+                     ln["PeriodDepreciation"], ln["ClosingAccumDep"], ln["ClosingNBV"], "DRAFT", ts, who) for ln in lines])
     audit(con, "RUN", "tbl_Depreciation", period_id, f"{p['PeriodName']}: {len(lines)} lines proposed")
     con.commit()
     return {"created": len(lines)}
@@ -236,11 +240,12 @@ def post_depreciation(con, period_id: int) -> dict:
         desc = f"Depreciation - {d['AssetCode']} - {d['AssetName']} - {p['PeriodName']}"
         for acc, dr, cr in ((d["DepExpenseAccountID"], d["PeriodDepreciation"], 0), (d["AccumDepAccountID"], 0, d["PeriodDepreciation"])):
             journal.append((d["DepreciationID"], d["AssetID"], period_id, p["EndDate"], acc, dr, cr, d["AssetCode"], desc, ts, who, ts))
-    con.executemany("""INSERT INTO tbl_DepreciationJournal(DepreciationID,AssetID,PeriodID,JournalDate,GLAccountID,
-        DebitAmount,CreditAmount,JournalType,Reference,Description,PostingStatus,PostedAt,PostedBy,CreatedAt)
-        VALUES(?,?,?,?,?,?,?,'DEPRECIATION',?,?,'POSTED',?,?,?)""", journal)
-    con.executemany("UPDATE tbl_Depreciation SET PostingStatus='POSTED',PostedAt=?,PostedBy=? WHERE DepreciationID=?",
-                    [(ts, who, d["DepreciationID"]) for d in drafts])
+    db.bulk_insert(con, "tbl_DepreciationJournal", ["DepreciationID", "AssetID", "PeriodID", "JournalDate", "GLAccountID", "DebitAmount", "CreditAmount",
+                                                    "JournalType", "Reference", "Description", "PostingStatus", "PostedAt", "PostedBy", "CreatedAt"],
+                   [(*j[:7], "DEPRECIATION", j[7], j[8], "POSTED", *j[9:]) for j in journal])
+    # one statement for the whole run: the drafts checked above are exactly the period's drafts in scope
+    con.execute(f"""UPDATE tbl_Depreciation SET PostingStatus='POSTED',PostedAt=?,PostedBy=? WHERE PeriodID=? AND PostingStatus='DRAFT'
+        AND AssetID IN (SELECT A.AssetID FROM tbl_Assets A WHERE 1=1{scope_sql('A')})""", (ts, who, period_id))
     total = sum(d["PeriodDepreciation"] for d in drafts)
     audit(con, "POST", "tbl_Depreciation", period_id, f"{p['PeriodName']}: {len(drafts)} lines, {r2(total)}")
     con.commit()

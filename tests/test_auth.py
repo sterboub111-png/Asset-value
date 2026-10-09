@@ -10,9 +10,8 @@ from pathlib import Path
 
 from app import db
 
-tmp = Path(tempfile.mkdtemp())
-db.DB_PATH = tmp / "auth.db"
-db.DATA_DIR = tmp
+from tests.fixture import empty_db  # noqa: E402
+tmp = empty_db("auth.db")
 db.init_db()
 from app import server  # noqa: E402  (after the database path is patched)
 

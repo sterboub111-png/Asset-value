@@ -66,4 +66,5 @@ def doc_no(kind: str, tx_id: int | None = None, period_start: str | None = None)
 
 def doc_no_sql(type_col: str, id_col: str) -> str:
     cases = " ".join(f"WHEN '{k}' THEN '{v}'" for k, v in DOC_PREFIX.items() if k != "DEPRECIATION")
-    return f"(CASE {type_col} {cases} ELSE 'TRX' END || '-' || printf('%06d', {id_col}))"
+    padded = f"substr('000000', 1, 6 - length(CAST({id_col} AS TEXT))) || CAST({id_col} AS TEXT)"   # the same in SQLite and PostgreSQL
+    return f"(CASE {type_col} {cases} ELSE 'TRX' END || '-' || {padded})"

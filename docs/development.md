@@ -6,7 +6,7 @@ python -m venv .venv
 .venv\Scripts\python -m pip install pyflakes nodejs-wheel   # optional: linter and a local Node for the TypeScript compiler
 npm install                                                 # only if node_modules/ is missing (TypeScript)
 ```
-The application itself needs only Python 3.12 (standard library). The compiled JavaScript in `web/static/js` is committed, so running the
+With SQLite the application needs only Python 3.12 (standard library); with PostgreSQL also `psycopg` (`.venv/bin/pip install -r requirements.txt`). The compiled JavaScript in `web/static/js` is committed, so running the
 app needs no Node; Node is only needed to change `web/src`.
 
 Run: `Usool.bat` or `python run.py [--no-browser] [--port 8742]`.
@@ -24,8 +24,12 @@ python -m tests.test_flow      # business rules on a temporary copy of the datab
 python -m tests.test_auth      # sign-in, sessions, permissions, lockout over real HTTP
 python -m tests.test_review    # regression tests for issues found in reviews
 python -m pyflakes app tools tests run.py
+npm test                       # all nine suites on SQLite
+npm run test:pg                # the same nine on PostgreSQL (database usool_test, emptied by the tests)
 ```
-Tests never touch `data/`: each builds a temporary database (`db.DB_PATH` / `services.db.ROOT` are pointed at a temp folder).
+Tests never touch `data/` or the real database: each builds a temporary one (`tests/fixture.py`: a temporary SQLite file, or the schema of
+`USOOL_TEST_DATABASE_URL` dropped and created again). Write SQL that runs on both: no SQLite-only functions (`julianday`, `date('now')`,
+`printf`), no untyped `? IS NULL`, and select only grouped columns (or columns of the table whose key is grouped).
 Add a test for every rule you add; the flow test is the place for accounting behaviour.
 
 ## Adding a feature (checklist)

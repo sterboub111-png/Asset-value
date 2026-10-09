@@ -79,8 +79,8 @@ def add_capital(con, asset_id: int, data: dict, dry: bool = False) -> dict:
                 (asset_id, "ADDITION", d, amount, a["LocationID"], a["CostCenterID"], (data.get("ReferenceNumber") or "").strip() or None,
                  (data.get("Notes") or "").strip() or None, now(), actor()))
     if life != a["UsefulLifeYears"]:
-        con.execute("UPDATE tbl_Assets SET UsefulLifeYears=?, DepreciationRate=CASE WHEN ? THEN DepreciationRate ELSE ? END WHERE AssetID=?",
-                    (life, a["MethodCode"] == "DB", round(100 / life, 4) if life else None, asset_id))
+        rate = a["DepreciationRate"] if a["MethodCode"] == "DB" else (round(100 / life, 4) if life else None)   # declining balance keeps its rate
+        con.execute("UPDATE tbl_Assets SET UsefulLifeYears=?, DepreciationRate=? WHERE AssetID=?", (life, rate, asset_id))
         audit(con, "UPDATE", "tbl_Assets", asset_id, f"useful life {a['UsefulLifeYears']} -> {life} with a capital addition")
     _discard_drafts(con, asset_id)
     con.execute("UPDATE tbl_Assets SET ModifiedAt=?,ModifiedBy=? WHERE AssetID=?", (now(), actor(), asset_id))

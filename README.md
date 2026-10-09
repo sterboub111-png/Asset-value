@@ -1,9 +1,17 @@
 # Usool (أصول) — local fixed-asset register
 
-Local application (Python + HTML/CSS/TypeScript),  Data lives in `data/gooya_asset.db` (SQLite),
-imported once from `Gooya asset.accdb`.
+Python + HTML/CSS/TypeScript. The data lives in **PostgreSQL** (the URL in `data/database.url`, or `USOOL_DATABASE_URL`),
+or without one in the SQLite file `data/gooya_asset.db`. The same code and tests run on both.
 
-**Run:** double-click `Usool.bat` (or `python run.py`) → http://127.0.0.1:8742/
+**Run:** double-click `Usool.bat` (or `python3 run.py`) → http://127.0.0.1:8742/ (with PostgreSQL, `run.py` uses the driver in `.venv` by itself)
+
+## Database
+- PostgreSQL setup: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`, create a database
+  (`createdb -T template0 -E UTF8 --lc-collate=C --lc-ctype=en_US.UTF-8 usool`), then move the SQLite data:
+  `.venv/bin/python tools/migrate_to_postgres.py postgresql:///usool` (copies every table, compares row counts and totals, runs the data checks,
+  and only then writes `data/database.url`). Deleting `data/database.url` switches back to SQLite.
+- `app/dbpg.py` adapts the services' SQL to PostgreSQL (quoted CamelCase names, `?` placeholders, `ILIKE`, identity keys, COPY for bulk inserts).
+- Backups on PostgreSQL hold every table as JSON (`usool-data.json`) with the attachments; `tools/restore_backup.py` restores either kind of backup into either database.
 
 ## Structure
 - `app/` Python backend (stdlib only, bound to 127.0.0.1): `db.py` schema, `auth.py`, `reports.py`, `scheduler.py`, `server.py`;
@@ -28,7 +36,8 @@ imported once from `Gooya asset.accdb`.
 - Settings > Branches: each branch has a country (ISO list) and optionally a city and region; each location belongs to a branch, so an asset's branch and country follow its location.
 - Users can be limited to some branches (Settings > Users). The branch picker in the top bar narrows everything to a country or a branch. The server applies both to every call (`scope_sql` in `app/services/common.py`): lists, cards, reports, the ledger, the workspace, counts and depreciation runs.
 - Reports group and filter by country, region and branch (register, summary, roll-forward, journal, disposals ...).
-- Checked at scale: 100 branches in 6 countries, 30,000 assets: a month's proposal and posting about 1.3 s, every report under 1.5 s, the data checks about 4 s.
+- Checked at scale: 100 branches in 6 countries, 30,000 assets. PostgreSQL: a month's proposal about 0.9 s and posting about 2 s, every report under 1.5 s,
+  the data checks about 5 s (SQLite: 0.3 s, 0.8 s, under 1.3 s, 4 s).
 
 ## Fixed asset ledger
 - Accounting > Fixed asset ledger (`#/ledger`, `app/services/ledger.py`): every acquisition, addition, month of depreciation, revaluation, impairment, transfer and disposal, each with a document number (DEP-2026-09, DSP-000042 ...) that opens its journal lines. On the asset card the same entries add up to its net book value.
@@ -49,7 +58,8 @@ imported once from `Gooya asset.accdb`.
 
 ## Tests and tools
 - `python -m tests.test_flow` business rules, `python -m tests.test_auth` sign-in and permissions, `python -m tests.test_review` regression tests for the review fixes,
-  `python -m tests.test_integrity` the data checks, `python -m tests.test_import` import from Excel, `python -m tests.test_counts` physical counts and the depreciation forecast, `python -m tests.test_valuation` declining balance, additions, revaluation / impairment, the ledger and branches, `python -m tests.test_scope` branch scope over HTTP (`npm test` runs all eight). Every suite builds its own clean database from `data/access_export.json`; none reads `data/gooya_asset.db`.
+  `python -m tests.test_integrity` the data checks, `python -m tests.test_import` import from Excel, `python -m tests.test_counts` physical counts and the depreciation forecast, `python -m tests.test_valuation` declining balance, additions, revaluation / impairment, the ledger and branches, `python -m tests.test_scope` branch scope over HTTP, `python -m tests.test_storage` backup, restore and the portable copy (`npm test` runs all nine on SQLite;
+  `npm run test:pg` runs the same nine on PostgreSQL in the `usool_test` database, which they empty). Every suite builds its own clean database from `data/access_export.json`; none reads `data/gooya_asset.db`.
 - **Data checks** (Accounting > Data checks, `GET /api/integrity`, `app/services/integrity.py`): the arithmetic the books must satisfy, recalculated from the tables - depreciation lines, journal balance, disposals, additions and revaluations, VAT, periods, and reports tied to the books.
 - `python tools/reset_test_data.py --yes` removes test data safely; `python tools/restore_backup.py <zip>` restores a backup.
 - `node node_modules/typescript/bin/tsc -p .` builds the front end (strict, unused code is an error).

@@ -1,8 +1,15 @@
 # Database
 
-SQLite file `data/gooya_asset.db` (the file name is kept from the original Access project so existing installations continue to work).
-WAL mode, `PRAGMA foreign_keys=ON`. `db.init_db()` runs at every start and is idempotent: it creates missing tables, adds missing
-columns (`ALTER TABLE`), and seeds groups, ledger accounts, methods, currencies, periods, settings and the four standard roles.
+PostgreSQL when a URL is configured (`data/database.url` or `USOOL_DATABASE_URL`), otherwise the SQLite file `data/gooya_asset.db`
+(WAL mode, `PRAGMA foreign_keys=ON`). One schema and one body of SQL serve both: the services write SQLite-style SQL and `app/dbpg.py`
+adapts it for PostgreSQL (names with capitals are quoted so `AssetCode` stays `AssetCode`; `?` → `%s`; `LIKE` → `ILIKE`;
+`INTEGER PRIMARY KEY AUTOINCREMENT` → identity column; `REAL` → `DOUBLE PRECISION`; `round(double, int)` is added as a function).
+Create the PostgreSQL database with `LC_COLLATE=C` so codes sort exactly as in SQLite.
+`db.init_db()` runs at every start and is idempotent: it creates missing tables, adds missing columns (`ALTER TABLE`), and seeds groups,
+ledger accounts, methods, currencies, periods, settings and the four standard roles.
+
+Portable copy: `db.dump_rows` / `db.load_tables` read and write every table (keys included, values converted to each column's type,
+key counters reset after loading). The PostgreSQL backups, `tools/restore_backup.py` and `tools/migrate_to_postgres.py` use them.
 
 ## Tables
 

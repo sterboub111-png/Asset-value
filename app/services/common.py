@@ -58,7 +58,7 @@ def scope_sql(alias: str = "A") -> str:
     if ids is None:
         return ""
     if not ids:
-        return " AND 0"
+        return " AND 1=0"
     return f" AND {alias}.LocationID IN (SELECT LocationID FROM tbl_Locations WHERE BranchID IN ({','.join(str(i) for i in ids)}))"
 
 

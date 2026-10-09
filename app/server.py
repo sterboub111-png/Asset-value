@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import mimetypes
 import re
-import sqlite3
 import sys
 import traceback
 from http.cookies import SimpleCookie
@@ -152,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
                     except s.ApiError as e:
                         con.rollback()
                         return self._json(e.status, {"error": str(e)})
-                    except sqlite3.Error as e:
+                    except db.DatabaseError as e:
                         con.rollback()
                         return self._json(400, {"error": f"Database error: {e}"})
                     except Exception:  # noqa: BLE001
@@ -210,13 +209,13 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port: int = 8742, open_browser: bool = True) -> None:
     db.init_db()
-    if not db.DB_PATH.exists() or not _has_data():
+    if (not db.is_pg() and not db.DB_PATH.exists()) or not _has_data():
         if db.EXPORT_PATH.exists():
             print("First run: importing data from Access export…", db.migrate_from_access())
     scheduler.start()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{port}/"
-    print(f"Usool is running at {url}  (Ctrl+C to stop)")
+    print(f"Usool is running at {url}  (Ctrl+C to stop)  ·  database: {'PostgreSQL ' if db.is_pg() else 'SQLite '}{db.describe()}")
     if open_browser:
         import webbrowser
         webbrowser.open(url)

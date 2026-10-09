@@ -1,8 +1,9 @@
 """Fixed assets: register, create/update/delete, status, transfers."""
 from __future__ import annotations
 
+from .. import db
+
 import re
-import sqlite3
 from datetime import date
 from typing import Any
 
@@ -181,7 +182,7 @@ def save_asset(con, data: dict, asset_id: int | None = None) -> dict:
             cur = con.execute(
                 f"INSERT INTO tbl_Assets(AssetCode,{','.join(v)},AssetStatus,IsActive,CreatedAt,CreatedBy) "
                 f"VALUES(?,{','.join('?' * len(v))},'Active',1,?,?)", [code, *v.values(), now(), actor()])
-        except sqlite3.IntegrityError as e:
+        except db.IntegrityError as e:
             if "AssetCode" in str(e):
                 raise ApiError(f"Asset code {code} already exists")
             raise ApiError("The asset could not be saved: a required value is missing or invalid")

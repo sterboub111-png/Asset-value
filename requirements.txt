@@ -1,0 +1,2 @@
+# Only needed for PostgreSQL (data/database.url or USOOL_DATABASE_URL); with SQLite the app runs on the standard library alone.
+psycopg[binary]>=3.2

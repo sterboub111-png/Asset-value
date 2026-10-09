@@ -63,10 +63,10 @@ def ledger(con, asset: int | None = None, f: str | None = None, t: str | None = 
             WHERE T.TransactionDate BETWEEN ? AND ?{tw}{where}""")
         pargs += [f, t, *([kind] if kind else []), *args]
     sql = " UNION ALL ".join(parts)
-    total = con.execute(f"SELECT COUNT(*), COALESCE(SUM(CostChange),0), COALESCE(SUM(DepChange),0), COALESCE(SUM(ValueChange),0) FROM ({sql})", pargs).fetchone()
+    total = con.execute(f"SELECT COUNT(*), COALESCE(SUM(CostChange),0), COALESCE(SUM(DepChange),0), COALESCE(SUM(ValueChange),0) FROM ({sql}) E", pargs).fetchone()
     order = "EntryDate, Ord, AssetCode, Document" if asset else "EntryDate DESC, Ord DESC, AssetCode, Document"
     limit = max(1, min(to_int(limit, "Limit", 500), 5000))
-    data = rows(con, f"SELECT * FROM ({sql}) ORDER BY {order} LIMIT ? OFFSET ?", [*pargs, limit, max(0, to_int(offset, "Offset"))])
+    data = rows(con, f"SELECT * FROM ({sql}) E ORDER BY {order} LIMIT ? OFFSET ?", [*pargs, limit, max(0, to_int(offset, "Offset"))])
     ar = getattr(_ctx, "lang", "en") == "ar"
     for r in data:
         r["CostChange"], r["DepChange"], r["ValueChange"] = r2(r["CostChange"]), r2(r["DepChange"]), r2(r["ValueChange"])
@@ -87,10 +87,10 @@ def entry_journal(con, tx: int | None = None, dep: int | None = None) -> dict:
     if not tx and not dep:
         raise ApiError("Entry not found", 404)
     col, key = ("TransactionID", tx) if tx else ("DepreciationID", dep)
-    head = one(con, f"""SELECT J.AssetID, A.AssetCode, A.AssetName, A.AssetNameAr, MIN(J.JournalDate) JournalDate, MIN(J.JournalType) JournalType,
+    head = one(con, f"""SELECT A.AssetID, A.AssetCode, A.AssetName, A.AssetNameAr, MIN(J.JournalDate) JournalDate, MIN(J.JournalType) JournalType,
         MIN(J.Description) Description, MIN(J.PostedBy) PostedBy, MIN(J.PostedAt) PostedAt, MIN(P.StartDate) PeriodStart
         FROM tbl_DepreciationJournal J JOIN tbl_Assets A ON A.AssetID=J.AssetID LEFT JOIN tbl_DepreciationPeriods P ON P.PeriodID=J.PeriodID
-        WHERE J.{col}=?{scope_sql('A')} GROUP BY J.AssetID""", (key,))
+        WHERE J.{col}=?{scope_sql('A')} GROUP BY A.AssetID""", (key,))
     lines = rows(con, f"""SELECT G.AccountCode, G.AccountName, G.AccountNameAr, J.DebitAmount, J.CreditAmount FROM tbl_DepreciationJournal J
         LEFT JOIN tbl_GLAccounts G ON G.GLAccountID=J.GLAccountID JOIN tbl_Assets A ON A.AssetID=J.AssetID
         WHERE J.{col}=?{scope_sql('A')} ORDER BY J.DebitAmount DESC, J.JournalID""", (key,))

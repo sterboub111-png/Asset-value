@@ -314,7 +314,7 @@ def depreciation_journal(con, p):
     if p.get("jview") == "summary":
         data = rows(con, f"""SELECT {DOC_SQL} AS Document, J.JournalDate, J.JournalType, G.AccountCode, G.AccountName, G.AccountNameAr,
                 COUNT(DISTINCT J.AssetID) AS Assets, SUM(J.DebitAmount) AS DebitAmount, SUM(J.CreditAmount) AS CreditAmount
-                {base} GROUP BY Document, J.JournalDate, J.JournalType, J.GLAccountID ORDER BY J.JournalDate, Document, G.AccountCode""", [f, t, *oargs])
+                {base} GROUP BY 1, J.JournalDate, J.JournalType, G.GLAccountID ORDER BY J.JournalDate, 1, G.AccountCode""", [f, t, *oargs])
         for r in data:
             r["DebitAmount"], r["CreditAmount"] = r2(r["DebitAmount"]), r2(r["CreditAmount"])
         return dict(columns=_cols(("JournalDate", "Date", "date"), ("JournalType", "Type", "text"), ("AccountCode", "Account", "text"),
@@ -423,10 +423,13 @@ def warranty_expiry(con, p):
     if not 0 <= days <= 36500:
         raise ApiError("Days must be between 0 and 36500")
     org, oargs = _org(p)
-    data = rows(con, f"""SELECT A.AssetCode, A.AssetName, A.AssetNameAr, C.CategoryName, C.CategoryNameAr, A.SupplierName, A.WarrantyExpiryDate,
-            CAST(julianday(A.WarrantyExpiryDate)-julianday('now') AS INTEGER) DaysLeft FROM tbl_Assets A
-            LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID WHERE A.AssetStatus<>'Disposed' AND A.WarrantyExpiryDate IS NOT NULL
-            AND A.WarrantyExpiryDate<=date('now',?){org} ORDER BY A.WarrantyExpiryDate""", [f"+{days} day", *oargs])
+    today = date.today()
+    limit = date.fromordinal(today.toordinal() + days).isoformat()
+    data = rows(con, f"""SELECT A.AssetCode, A.AssetName, A.AssetNameAr, C.CategoryName, C.CategoryNameAr, A.SupplierName, A.WarrantyExpiryDate
+            FROM tbl_Assets A LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID WHERE A.AssetStatus<>'Disposed' AND A.WarrantyExpiryDate IS NOT NULL
+            AND A.WarrantyExpiryDate<=?{org} ORDER BY A.WarrantyExpiryDate""", [limit, *oargs])
+    for r in data:
+        r["DaysLeft"] = date.fromisoformat(r["WarrantyExpiryDate"][:10]).toordinal() - today.toordinal()
     return dict(columns=_cols(("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"), ("CategoryName", "Group", "text"),
                               ("SupplierName", "Supplier", "text"), ("WarrantyExpiryDate", "Warranty expiry", "date"),
                               ("DaysLeft", "Days left", "int")), rows=data, totals=[], subtitle=f"Expiring within {days} days")
