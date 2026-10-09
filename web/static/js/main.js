@@ -8,7 +8,9 @@ import { forcePasswordChange, signOut, signingOut } from "./shell/account.js";
 import { buildNav, loadReportGroups, markActive, narrow, railKey } from "./shell/nav.js";
 import { ROUTES, permFor } from "./shell/routes.js";
 import { buildTopbar } from "./shell/topbar.js";
-import { clear, closeAllDialogs, fail, h, icon } from "./ui/index.js";
+import { rememberVisit } from "./shell/search.js";
+import { clear, closeAllDialogs, confirmDialog, fail, h, icon } from "./ui/index.js";
+import { isDirty, markClean } from "./core/dirty.js";
 applyTheme();
 let mainEl;
 let crumbEl;
@@ -42,6 +44,8 @@ async function render() {
         }
         try {
             await r.fn(holder, { args: m.slice(1), query });
+            if (my === seq)
+                rememberVisit(location.hash, holder.querySelector(".page-head h1")?.textContent || "", t(r.crumb));
         }
         catch (e) {
             if (my === seq) {
@@ -120,5 +124,22 @@ async function boot(notice) {
     await startSession(st.user);
 }
 initKeyboard();
-window.addEventListener("hashchange", render);
+// leaving a form with unsaved changes asks first; "stay" puts the address back without reloading the page
+let lastHash = location.hash;
+window.addEventListener("hashchange", async () => {
+    if (isDirty()) {
+        const leave = await confirmDialog(t("You have unsaved changes. Leave this page and discard them?"), { danger: true, ok: t("Discard changes"), title: t("Unsaved changes") });
+        if (!leave) {
+            history.replaceState(null, "", lastHash || "#/");
+            return;
+        }
+        markClean();
+    }
+    lastHash = location.hash;
+    void render();
+});
+addEventListener("beforeunload", (e) => { if (isDirty()) {
+    e.preventDefault();
+    e.returnValue = "";
+} });
 void boot();

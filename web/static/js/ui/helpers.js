@@ -1,7 +1,8 @@
 /** Small helpers shared by the pages (names, guards, save hook, CSV). */
-import { getLang, t } from "../core/i18n.js";
+import { getLang } from "../core/i18n.js";
+import { watchDirty } from "../core/dirty.js";
 import { fail } from "./dialogs.js";
-import { cellValue } from "./format.js";
+import { cellValue, codeLabel } from "./format.js";
 /** Display name of a record: the Arabic column (<key>Ar) in Arabic mode when filled, else the English one. */
 export const nm = (r, key) => (r ? (getLang() === "ar" && r[key + "Ar"] ? r[key + "Ar"] : r[key] ?? "") : "");
 export const opts = (rows, value, label) => rows.map((r) => ({ value: r[value], label: label(r) }));
@@ -25,7 +26,7 @@ export const guard = (fn) => {
 // ---- Save shortcut: the page on screen registers its save action; the keyboard handler (shell/keyboard.ts) calls it
 let saveSlot = null;
 /** Register the save action of the current page; it only fires while `root` is still in the document. */
-export function onSave(root, fn) { saveSlot = { root, fn }; }
+export function onSave(root, fn) { saveSlot = { root, fn }; watchDirty(root); }
 /** Run the current page's save action. False when the page has none. */
 export function runSave() {
     if (!saveSlot || !saveSlot.root.isConnected)
@@ -45,6 +46,6 @@ export function displayText(c, r) {
         return n instanceof Node ? (n.textContent || "") : String(n ?? "");
     }
     if (c.type === "status")
-        return r[c.key] ? t(String(r[c.key])) : "";
+        return r[c.key] ? codeLabel(String(r[c.key])) : "";
     return cellValue(c, r[c.key]);
 }

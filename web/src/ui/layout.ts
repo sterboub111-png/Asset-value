@@ -11,7 +11,8 @@ export function ribbon(allGroups: RibbonBtn[][], allTitles?: string[]) {
   const keep = allGroups.map((g) => g.filter((b) => can(b.perm)));
   const groups = keep.filter((g) => g.length);
   const titles = allTitles && allTitles.length === allGroups.length ? allTitles.filter((_, i) => keep[i].length) : undefined;
-  const tabbed = !!titles && titles.length === groups.length && groups.length > 1;
+  // tabs only pay off when there are many commands; a short action pane stays one flat row
+  const tabbed = !!titles && titles.length === groups.length && groups.length > 1 && groups.reduce((n, g) => n + g.length, 0) > 7;
   const el = h("div", { class: `ribbon ${tabbed ? "tabbed" : ""}`, role: "toolbar" });
   const btns: Record<string, HTMLButtonElement> = {};
   // the standard commands carry their action name so the keyboard shortcuts (shell/keyboard.ts) can press them

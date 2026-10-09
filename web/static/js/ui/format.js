@@ -38,7 +38,14 @@ const STATUS_CLASS = {
     Active: "ok", POSTED: "ok", OPEN: "ok", Posted: "ok", Draft: "info", DRAFT: "info", Issued: "warn", Locked: "err", Returned: "", Attached: "ok", Missing: "warn", Planned: "info", "In Progress": "warn", Completed: "ok", Cancelled: "", High: "err", Medium: "warn", Low: "", Overdue: "err", NEW: "info", Inactive: "", "Under Repair": "warn",
     Disposed: "err", CLOSED: "warn", ACQUISITION: "ok", DISPOSAL: "err", TRANSFER: "info", STATUS: "warn",
 };
-export const pill = (text, cls) => h("span", { class: `pill ${cls ?? STATUS_CLASS[text] ?? ""}` }, t(text));
+/** A status or type code as people read it: its translation, else "DEPRECIATION" -> "Depreciation" (codes are stored upper case). */
+export function codeLabel(code) {
+    const tr = t(code);
+    if (tr !== code || !/^[A-Z][A-Z_ ]+$/.test(code))
+        return tr;
+    return code.charAt(0) + code.slice(1).toLowerCase().replace(/_/g, " ");
+}
+export const pill = (text, cls) => h("span", { class: `pill ${cls ?? STATUS_CLASS[text] ?? ""}` }, codeLabel(text));
 export function cellValue(col, v) {
     switch (col.type) {
         case "money": return fmtMoney(v);

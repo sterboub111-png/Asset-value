@@ -19,7 +19,7 @@ export async function assetsListPage(root, a) {
         { key: "LocationName", label: "Location" },
         { key: "CostCenterName", label: "Cost center", hidden: true },
         { key: "AcquisitionCost", label: "Cost", type: "money" },
-        { key: "AccumDep", label: "Accum. depreciation", type: "money" },
+        { key: "AccumDep", label: "Accum. dep.", type: "money" },
         { key: "NBV", label: "Net book value", type: "money" },
     ];
     const statusSel = combo([...L.statuses, "Disposed"].map((s) => ({ value: s, label: t(s) })), { placeholder: t("All statuses"), label: t("Status"), width: 170 });

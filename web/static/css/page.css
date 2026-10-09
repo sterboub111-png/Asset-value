@@ -8,16 +8,16 @@
 .pill { display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg); color: var(--ink-2); white-space: nowrap; }
 .pill.ok { background: var(--ok-bg); color: var(--ok); } .pill.warn { background: var(--warn-bg); color: var(--warn); }
 .pill.err { background: var(--err-bg); color: var(--err); } .pill.info { background: var(--info-bg); color: var(--blue-t); }
-.ribbon { display: flex; align-items: stretch; gap: 2px; margin: 6px -8px 0; overflow-x: auto; min-height: 40px; }
+.ribbon { display: flex; align-items: center; gap: 2px; margin: 8px -8px 0; padding-bottom: 8px; overflow-x: auto; min-height: 40px; }
 .ribbon-wrap { width: 100%; }
-.ribbon.tabbed { display: block; margin-top: 4px; }
+.ribbon.tabbed { display: block; margin-top: 4px; padding-bottom: 0; }
 .ribbon-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding-inline: 8px; }
 .ribbon-tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 14px; margin-bottom: -1px; cursor: pointer; font-size: 13px; color: var(--ink-2); }
 .ribbon-tab:hover { color: var(--ink); background: var(--hover); }
 .ribbon-tab.active { color: var(--blue-t); border-bottom-color: var(--blue); font-weight: 600; }
 .ribbon-row { display: block; }
 .ribbon-row .grp { border: 0; padding-inline: 8px; min-height: 40px; flex-wrap: wrap; }
-.ribbon .grp { display: flex; align-items: center; gap: 2px; padding-inline: 6px; border-inline-end: 1px solid var(--line); }
+.ribbon .grp { display: flex; align-items: center; gap: 2px; padding-inline: 6px; border-inline-end: 1px solid var(--line); min-height: 28px; }
 .ribbon .grp:last-child { border: 0; }
 .rb { background: none; border: 0; border-radius: var(--radius); padding: 6px 10px; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; white-space: nowrap; color: var(--ink); }
 .rb svg { color: var(--blue); }

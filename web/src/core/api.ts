@@ -1,5 +1,6 @@
 import { getLang } from "./i18n.js";
 import type { Lookups, Rec } from "./types.js";
+import { markClean } from "./dirty.js";
 
 export class ApiError extends Error {}
 
@@ -26,6 +27,7 @@ async function call<T>(method: string, url: string, body?: unknown, headers: Rec
     if (res.status === 403 && (data as Rec).auth === "password") hooks.onMustChange?.();
     throw new ApiError((data as Rec).error || `Request failed (${res.status})`);
   }
+  if (method !== "GET") markClean();   // a saved form has nothing left to lose
   return data as T;
 }
 

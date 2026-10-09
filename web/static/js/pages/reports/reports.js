@@ -2,7 +2,7 @@ import { api, lookups } from "../../core/api.js";
 import { t } from "../../core/i18n.js";
 import { getMe, userTitle } from "../../core/session.js";
 import { addPin } from "./dashboard.js";
-import { Analysis, combo, fold, Form, nm, cellValue, csvText, clear, downloadCsv, fail, fmtDate, h, opts, page, ribbon, toast, today } from "../../ui/index.js";
+import { Analysis, codeLabel, combo, fold, Form, nm, cellValue, csvText, clear, downloadCsv, fail, fmtDate, h, opts, page, ribbon, toast, today } from "../../ui/index.js";
 export const REPORT_INFO = {
     "asset-register": { title: "Fixed asset register", desc: "Cost, accumulated depreciation and net book value of every asset at a date." },
     "asset-summary": { title: "Fixed asset summary", desc: "Totals by group, location or cost center at a date." },
@@ -285,7 +285,7 @@ export function analysisOpts(r) {
     const summed = new Set([...(r.totals || []), ...(r.subtotal_only || [])]);
     const text = (k, row) => {
         const c = cols.find((x) => x.key === k);
-        return ENUM_COLS.has(k) ? t(String(row[k] ?? "")) : c ? cellValue(c, row[k]) : String(row[k] ?? "");
+        return ENUM_COLS.has(k) ? codeLabel(String(row[k] ?? "")) : c ? cellValue(c, row[k]) : String(row[k] ?? "");
     };
     return {
         id: r.id, columns: cols, rows: r.rows, text, order: r.order,
@@ -330,7 +330,7 @@ function renderReport(r, title, paramLines, user) {
     const ENUM = new Set(["SupplierType", "VatStatus", "Basis", "Status", "MaintenanceType", "Priority", "Timing", "Source", "TransactionType", "PostingStatus", "JournalType"]);
     // codes, references and dates never break across lines (an asset code would split at its hyphen)
     const keep = (c) => isNum(c.type) || c.type === "date" || /Code$|^Reference$|No$/.test(c.key);
-    const cell = (c, row) => h("td", { class: `${isNum(c.type) ? "num" : ""} ${keep(c) ? "nw" : ""}` }, ENUM.has(c.key) ? t(String(row[c.key] ?? "")) : cellValue(c, row[c.key]));
+    const cell = (c, row) => h("td", { class: `${isNum(c.type) ? "num" : ""} ${keep(c) ? "nw" : ""}` }, ENUM.has(c.key) ? codeLabel(String(row[c.key] ?? "")) : cellValue(c, row[c.key]));
     const totalsRow = (cls, label, rows, keys) => tr(cls, cols.map((c, i) => h("td", { class: isNum(c.type) ? "num" : "" }, keys.includes(c.key) ? cellValue(c, sum(rows, c.key)) : i === 0 ? label : "")));
     if (!r.rows.length)
         tbody.append(tr("", [h("td", { colspan: cols.length, class: "empty" }, t("No data for these parameters."))]));
@@ -373,6 +373,6 @@ function reportHead(r, title, paramLines, user) {
 function exportCsv(r, title) {
     const lines = [r.columns.map((c) => csvText(t(c.label))).join(",")];
     for (const row of r.rows)
-        lines.push(r.columns.map((c) => (isNum(c.type) ? String(row[c.key] ?? "") : csvText(ENUM_COLS.has(c.key) ? t(String(row[c.key] ?? "")) : cellValue(c, row[c.key])))).join(","));
+        lines.push(r.columns.map((c) => (isNum(c.type) ? String(row[c.key] ?? "") : csvText(ENUM_COLS.has(c.key) ? codeLabel(String(row[c.key] ?? "")) : cellValue(c, row[c.key])))).join(","));
     downloadCsv(title.replace(/[^\w؀-ۿ-]+/g, "-"), lines.join("\r\n"));
 }

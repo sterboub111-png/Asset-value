@@ -350,6 +350,10 @@ ar = {
     "Total this column": "إجمالي هذا العمود", "Ungroup": "إلغاء التجميع", "Group by this column": "التجميع حسب هذا العمود",
     "(blank)": "(فارغ)", "Contains…": "يحتوي على…", "Clear all filters": "مسح كل عوامل التصفية",
     # navigation, appearance, reports center
+    "You have unsaved changes. Leave this page and discard them?": "لديك تغييرات غير محفوظة. هل تريد مغادرة الصفحة وتجاهلها؟",
+    "Discard changes": "تجاهل التغييرات",
+    "Unsaved changes": "تغييرات غير محفوظة",
+    "Recent": "الأخيرة",
     "Home": "الرئيسية",
     "All reports": "كل التقارير",
     "Run depreciation": "تشغيل الإهلاك",

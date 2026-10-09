@@ -11,6 +11,16 @@ import { reportGroups } from "./nav.js";
 
 interface Hit { label: string; sub?: string; href: string; }
 
+// ---- recently visited pages (this browser), offered before anything is typed
+const RECENT_KEY = "usool.recent";
+const recent = (): Hit[] => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch { return []; } };
+/** Called after a page is drawn: the newest first, eight at most, the workspace left out. */
+export function rememberVisit(href: string, label: string, sub: string): void {
+  if (!label || href === "#/" || href === "") return;
+  const list = [{ href, label, sub: sub === label ? "" : sub }, ...recent().filter((r) => r.href !== href)].slice(0, 8);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* ignore */ }
+}
+
 /** Pages and the most common actions, by their translated names. */
 function places(): Hit[] {
   const out: Hit[] = [];
@@ -75,7 +85,11 @@ export function globalSearch(sig: { signal: AbortSignal }): HTMLElement {
   };
 
   input.addEventListener("input", () => { clearTimeout(timer); timer = window.setTimeout(run, 160); });
-  input.addEventListener("focus", () => { if (input.value.trim()) void run(); });
+  input.addEventListener("focus", () => {
+    if (input.value.trim()) { void run(); return; }
+    const last = recent().filter((r) => can(permFor(r.href.split("?")[0])));
+    if (last.length) render([[t("Recent"), last]]);
+  });
   input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       if (!hits.length) return;

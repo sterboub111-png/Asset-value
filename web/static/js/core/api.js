@@ -1,4 +1,5 @@
 import { getLang } from "./i18n.js";
+import { markClean } from "./dirty.js";
 export class ApiError extends Error {
 }
 /** Set by the app shell: called when the session has ended (401) or a password change is required (403). */
@@ -27,6 +28,8 @@ async function call(method, url, body, headers = {}) {
             hooks.onMustChange?.();
         throw new ApiError(data.error || `Request failed (${res.status})`);
     }
+    if (method !== "GET")
+        markClean(); // a saved form has nothing left to lose
     return data;
 }
 export const api = {

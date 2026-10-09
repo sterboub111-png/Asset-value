@@ -7,6 +7,24 @@ import { REPORT_INFO } from "../pages/reports/reports.js";
 import { clear, fold, h, icon, nm } from "../ui/index.js";
 import { NAV, NAV_BOTTOM, permFor } from "./routes.js";
 import { reportGroups } from "./nav.js";
+// ---- recently visited pages (this browser), offered before anything is typed
+const RECENT_KEY = "usool.recent";
+const recent = () => { try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+}
+catch {
+    return [];
+} };
+/** Called after a page is drawn: the newest first, eight at most, the workspace left out. */
+export function rememberVisit(href, label, sub) {
+    if (!label || href === "#/" || href === "")
+        return;
+    const list = [{ href, label, sub: sub === label ? "" : sub }, ...recent().filter((r) => r.href !== href)].slice(0, 8);
+    try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+    }
+    catch { /* ignore */ }
+}
 /** Pages and the most common actions, by their translated names. */
 function places() {
     const out = [];
@@ -80,8 +98,15 @@ export function globalSearch(sig) {
         render([[t("Fixed assets"), assets], [t("Pages"), pages], [t("Reports"), reports], [t("Suppliers"), suppliers], [t("Employees"), employees]]);
     };
     input.addEventListener("input", () => { clearTimeout(timer); timer = window.setTimeout(run, 160); });
-    input.addEventListener("focus", () => { if (input.value.trim())
-        void run(); });
+    input.addEventListener("focus", () => {
+        if (input.value.trim()) {
+            void run();
+            return;
+        }
+        const last = recent().filter((r) => can(permFor(r.href.split("?")[0])));
+        if (last.length)
+            render([[t("Recent"), last]]);
+    });
     input.addEventListener("keydown", (e) => {
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             if (!hits.length)

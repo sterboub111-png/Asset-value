@@ -43,15 +43,15 @@
 .grid-tools .spacer { flex: 1; }
 .grid-scroll { overflow: auto; max-height: calc(100vh - 290px); min-height: 120px; }
 table.grid { border-collapse: collapse; width: 100%; font-size: 13px; }
-table.grid th { position: sticky; top: 0; background: var(--head); text-align: start; font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line-2); white-space: nowrap; cursor: pointer; user-select: none; z-index: 1; }
+table.grid th { position: sticky; top: 0; background: var(--head); text-align: start; font-weight: 600; padding: 8px 8px; color: var(--ink-2); font-size: 12.5px; border-bottom: 1px solid var(--line-2); white-space: nowrap; cursor: pointer; user-select: none; z-index: 1; }
 table.grid th:hover { background: var(--hover); }
 table.grid th .srt { color: var(--blue); margin-inline-start: 4px; }
-table.grid td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+table.grid td { padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 table.grid tbody tr:hover { background: var(--hover); } table.grid tbody tr.sel { background: var(--sel); }
 table.grid tbody tr.clickable { cursor: pointer; }
 table.grid .chk { width: 34px; padding-inline: 10px 0; text-align: center; } table.grid .chk input { margin: 0; cursor: pointer; accent-color: var(--blue); }
 table.grid .num { text-align: end; font-variant-numeric: tabular-nums; } table.grid .ctr { text-align: center; }
-table.grid tfoot td { font-weight: 600; background: var(--head); border-top: 2px solid var(--line-2); position: sticky; bottom: 0; }
+table.grid tfoot td { font-weight: 600; background: var(--head); border-top: 2px solid var(--line-2); position: sticky; bottom: 0; box-shadow: 0 10px 0 var(--head); }
 table.grid td a.lnk { font-weight: 600; }
 .grid-foot { padding: 6px 12px; color: var(--ink-2); font-size: 12px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; }
 .neg { color: var(--err); }
@@ -66,14 +66,15 @@ table.grid td a.lnk { font-weight: 600; }
 [dir=rtl] .fasttab > header svg { transform: scaleX(-1); } [dir=rtl] .fasttab.open > header svg { transform: rotate(90deg); }
 .fasttab > .content { display: none; padding: 6px 16px 16px; border-top: 1px solid var(--line); }
 .fasttab.open > .content { display: block; }
-.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 320px)); gap: 12px 32px; padding-top: 10px; }
-.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .field.wide { grid-column: 1 / -1; max-width: 672px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px 28px; padding-top: 10px; }
+.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .field.wide { grid-column: 1 / -1; }
 .field label { font-size: 12px; color: var(--ink-2); } .field label .req { color: var(--err); margin-inline-start: 2px; }
 .field input, .field select, .field textarea, .dlg input, .dlg select, .dlg textarea, .gt-input {
   border: 1px solid var(--line-2); border-radius: var(--radius); padding: 5px 8px; min-height: 30px; background: var(--paper); width: 100%; }
 .field input:hover, .field select:hover, .field textarea:hover { border-color: var(--ink-2); }
 .field input:focus, .field select:focus, .field textarea:focus, .dlg input:focus, .dlg select:focus, .dlg textarea:focus, .gt-input:focus { outline: none; border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
-.field input[readonly], .field select:disabled, .field input:disabled { background: var(--bg2); color: var(--ink-2); }
+/* locked values stay readable: a quiet surface, normal ink, no strong frame */
+.field input[readonly], .field select:disabled, .field input:disabled { background: var(--head); color: var(--ink); border-color: var(--line); opacity: 1; }
 .field.invalid input, .field.invalid select { border-color: var(--err); } .field .hint { font-size: 11px; color: var(--ink-3); }
 .field textarea { min-height: 70px; resize: vertical; }
 .field.check { flex-direction: row; align-items: center; gap: 8px; padding-top: 18px; } .field.check input { width: auto; min-height: 0; }
@@ -207,7 +208,7 @@ u-combo .cb-input:focus { outline: none; border-color: var(--blue); box-shadow: 
 u-combo .cb-input::placeholder { color: var(--ink-3); }
 u-combo.has-value .cb-input { font-weight: 600; }
 .field u-combo.has-value .cb-input { font-weight: 400; }
-u-combo.ro .cb-input { background: var(--bg2); color: var(--ink-2); cursor: default; }
+u-combo.ro .cb-input { background: var(--head); color: var(--ink); border-color: var(--line); cursor: default; }
 .field.invalid u-combo .cb-input { border-color: var(--err); }
 u-combo .cb-clear { position: absolute; inset-inline-end: 3px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border: 0; background: none; color: var(--ink-3); cursor: pointer; font-size: 16px; line-height: 1; border-radius: var(--radius); }
 u-combo .cb-clear:hover { color: var(--ink); background: var(--hover); }

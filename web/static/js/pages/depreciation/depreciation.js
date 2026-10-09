@@ -1,6 +1,6 @@
 import { api, invalidateLookups, lookups } from "../../core/api.js";
 import { t } from "../../core/i18n.js";
-import { DataGrid, combo, Form, clear, confirmDialog, dialog, fail, fmtMoney, guard, h, page, pill, ribbon, toast } from "../../ui/index.js";
+import { DataGrid, codeLabel, combo, Form, clear, confirmDialog, dialog, fail, fmtMoney, guard, h, page, pill, ribbon, toast } from "../../ui/index.js";
 // ================================================================ depreciation run
 export async function depreciationPage(root, a) {
     const L = await lookups(true);
@@ -169,7 +169,7 @@ export async function journalPage(root, a) {
     const per = combo(L.periods.map((p) => ({ value: p.PeriodID, label: p.PeriodName })), { value: a.query.get("period") ?? "", placeholder: t("All periods"), label: t("Period"), width: 210 });
     const typ = combo([{ value: "DEPRECIATION", label: t("Depreciation") }, { value: "DISPOSAL", label: t("Disposal") }], { placeholder: t("All types"), label: t("Type"), width: 170 });
     const grid = new DataGrid({ rows: [], tools: [per, typ], exportName: "fixed-asset-journal", totals: ["DebitAmount", "CreditAmount"], columns: [
-            { key: "JournalDate", label: "Date", type: "date" }, { key: "JournalType", label: "Type", render: (r) => t(r.JournalType) }, { key: "PeriodName", label: "Period" },
+            { key: "JournalDate", label: "Date", type: "date" }, { key: "JournalType", label: "Type", render: (r) => codeLabel(r.JournalType) }, { key: "PeriodName", label: "Period" },
             { key: "Reference", label: "Asset", link: (r) => (r.AssetID ? `#/assets/${r.AssetID}` : null) }, { key: "AccountCode", label: "Account" }, { key: "AccountName", label: "Account name" },
             { key: "DebitAmount", label: "Debit", type: "money" }, { key: "CreditAmount", label: "Credit", type: "money" }, { key: "Description", label: "Description" },
         ] });
