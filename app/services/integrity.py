@@ -9,6 +9,7 @@ from __future__ import annotations
 import calendar
 from datetime import date
 
+from .book import ACCUM_SQL, NBV_SQL
 from .common import one, r2, rows
 
 EPS = 0.005
@@ -18,20 +19,37 @@ def _issue(text: str, **ref) -> dict:
     return {"text": text, **ref}
 
 
+def _moves(con) -> dict[int, list]:
+    """{AssetID: [(date, type, amount)]} of the additions and value changes, for book values at a date."""
+    out: dict[int, list] = {}
+    for r in con.execute("SELECT AssetID, TransactionDate, TransactionType, Amount FROM tbl_AssetTransactions WHERE TransactionType IN ('ADDITION','IMPAIRMENT','REVALUATION')"):
+        out.setdefault(r[0], []).append((r[1], r[2], r[3] or 0))
+    return out
+
+
+def _at(moves: list, d: str) -> tuple[float, float]:
+    """(additions, value adjustments) recorded on or before d."""
+    done = [m for m in moves if m[0] <= d]
+    return sum(m[2] for m in done if m[1] == "ADDITION"), sum(m[2] for m in done if m[1] != "ADDITION")
+
+
 def _depreciation_lines(con) -> list[dict]:
-    """Each line: opening + charge = closing, and closing NBV = cost - closing; posted lines chain from the opening balance."""
+    """Each line: opening + charge = closing, and closing NBV = cost - closing + revaluation / impairment, on the cost the asset
+    had in that month (acquisition + additions); posted lines chain from the opening balance."""
     out = []
-    lines = rows(con, """SELECT D.*, A.AssetCode, A.OpeningAccumDep AS AssetOpening, A.AcquisitionCost AS AssetCost, P.StartDate
+    moves = _moves(con)
+    lines = rows(con, """SELECT D.*, A.AssetCode, A.OpeningAccumDep AS AssetOpening, A.AcquisitionCost AS AssetCost, P.StartDate, P.EndDate
         FROM tbl_Depreciation D JOIN tbl_Assets A ON A.AssetID=D.AssetID JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID
         ORDER BY D.AssetID, P.StartDate""", raw=True)
     prev: dict[int, float] = {}
     for d in lines:
         code = d["AssetCode"]
+        adds, adj = _at(moves.get(d["AssetID"], []), d["EndDate"])
         if abs((d["OpeningAccumDep"] or 0) + (d["PeriodDepreciation"] or 0) - (d["ClosingAccumDep"] or 0)) > EPS:
             out.append(_issue(f"{code}: opening + depreciation does not equal closing accumulated depreciation", asset=d["AssetID"], period=d["PeriodID"]))
-        if abs((d["AcquisitionCost"] or 0) - (d["ClosingAccumDep"] or 0) - (d["ClosingNBV"] or 0)) > EPS:
+        if abs((d["AcquisitionCost"] or 0) - (d["ClosingAccumDep"] or 0) + adj - (d["ClosingNBV"] or 0)) > EPS:
             out.append(_issue(f"{code}: closing net book value is not cost less closing accumulated depreciation", asset=d["AssetID"], period=d["PeriodID"]))
-        if abs((d["AcquisitionCost"] or 0) - (d["AssetCost"] or 0)) > EPS:
+        if abs((d["AcquisitionCost"] or 0) - (d["AssetCost"] or 0) - adds) > EPS:
             out.append(_issue(f"{code}: a depreciation line was calculated on a cost the asset no longer has", asset=d["AssetID"], period=d["PeriodID"]))
         if d["PostingStatus"] == "POSTED":
             expected = prev.get(d["AssetID"], d["AssetOpening"] or 0)
@@ -42,12 +60,10 @@ def _depreciation_lines(con) -> list[dict]:
 
 
 def _residual_floor(con) -> list[dict]:
-    """Accumulated depreciation never goes past cost less residual value."""
+    """Depreciation never takes the carrying amount below the residual value."""
     out = []
-    for a in rows(con, """SELECT A.AssetID, A.AssetCode, A.AcquisitionCost, A.ResidualValue, COALESCE(A.OpeningAccumDep,0)
-            + COALESCE((SELECT SUM(PeriodDepreciation) FROM tbl_Depreciation D WHERE D.AssetID=A.AssetID AND D.PostingStatus='POSTED'),0) AS Accum
-            FROM tbl_Assets A""", raw=True):
-        if a["Accum"] > (a["AcquisitionCost"] or 0) - (a["ResidualValue"] or 0) + EPS:
+    for a in rows(con, f"""SELECT A.AssetID, A.AssetCode, A.ResidualValue, {ACCUM_SQL} AS Accum, {NBV_SQL} AS NBV FROM tbl_Assets A""", raw=True):
+        if a["NBV"] < (a["ResidualValue"] or 0) - EPS:
             out.append(_issue(f"{a['AssetCode']}: depreciated below its residual value", asset=a["AssetID"]))
         if a["Accum"] < -EPS:
             out.append(_issue(f"{a['AssetCode']}: negative accumulated depreciation", asset=a["AssetID"]))
@@ -83,24 +99,28 @@ def _journal_balanced(con) -> list[dict]:
 
 
 def _disposals(con) -> list[dict]:
-    """A disposal removes the cost and the accumulated depreciation at that date; the gain or loss is proceeds less NBV."""
+    """A disposal removes the cost (with additions) and the accumulated depreciation and impairment at that date; the gain or
+    loss is proceeds less the net book value."""
     out = []
+    moves = _moves(con)
     for t in rows(con, """SELECT T.*, A.AssetCode, A.AcquisitionCost, A.OpeningAccumDep, A.AssetStatus, A.DisposalDate,
             C.AssetAccountID, C.AccumDepAccountID, C.GainAccountID, C.LossAccountID FROM tbl_AssetTransactions T
             JOIN tbl_Assets A ON A.AssetID=T.AssetID JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID WHERE T.TransactionType='DISPOSAL'""", raw=True):
         code = t["AssetCode"]
+        adds, adj = _at(moves.get(t["AssetID"], []), t["TransactionDate"])
+        cost = (t["AcquisitionCost"] or 0) + adds
         accum = (t["OpeningAccumDep"] or 0) + one(con, """SELECT COALESCE(SUM(D.PeriodDepreciation),0) s FROM tbl_Depreciation D
             JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID WHERE D.AssetID=? AND D.PostingStatus='POSTED' AND P.EndDate<=?""",
             (t["AssetID"], t["TransactionDate"]), raw=True)["s"]
         j = rows(con, "SELECT * FROM tbl_DepreciationJournal WHERE TransactionID=?", (t["TransactionID"],), raw=True)
         on = lambda acc, side: sum(x[side] for x in j if x["GLAccountID"] == acc)   # the group's own accounts, whatever their type
         cost_cr = on(t["AssetAccountID"], "CreditAmount")
-        accum_dr = on(t["AccumDepAccountID"], "DebitAmount")
-        if abs(cost_cr - (t["AcquisitionCost"] or 0)) > EPS:
-            out.append(_issue(f"{code}: disposal credits cost {r2(cost_cr)}, the asset cost is {r2(t['AcquisitionCost'])}", asset=t["AssetID"]))
-        if abs(accum_dr - accum) > EPS:
-            out.append(_issue(f"{code}: disposal debits accumulated depreciation {r2(accum_dr)}, the books show {r2(accum)}", asset=t["AssetID"]))
-        nbv = (t["AcquisitionCost"] or 0) - accum
+        accum_dr = on(t["AccumDepAccountID"], "DebitAmount") - on(t["AccumDepAccountID"], "CreditAmount")
+        if abs(cost_cr - cost) > EPS:
+            out.append(_issue(f"{code}: disposal credits cost {r2(cost_cr)}, the asset cost is {r2(cost)}", asset=t["AssetID"]))
+        if abs(accum_dr - (accum - adj)) > EPS:
+            out.append(_issue(f"{code}: disposal debits accumulated depreciation {r2(accum_dr)}, the books show {r2(accum - adj)}", asset=t["AssetID"]))
+        nbv = cost - accum + adj
         gain = on(t["GainAccountID"], "CreditAmount") - on(t["LossAccountID"], "DebitAmount")
         if abs(gain - ((t["DisposalProceeds"] or 0) - nbv)) > EPS:
             out.append(_issue(f"{code}: gain / loss {r2(gain)} is not proceeds less net book value ({r2((t['DisposalProceeds'] or 0) - nbv)})", asset=t["AssetID"]))
@@ -109,6 +129,37 @@ def _disposals(con) -> list[dict]:
     for a in rows(con, """SELECT AssetID, AssetCode FROM tbl_Assets A WHERE AssetStatus='Disposed'
             AND NOT EXISTS (SELECT 1 FROM tbl_AssetTransactions T WHERE T.AssetID=A.AssetID AND T.TransactionType='DISPOSAL')""", raw=True):
         out.append(_issue(f"{a['AssetCode']}: marked disposed without a disposal transaction", asset=a["AssetID"]))
+    return out
+
+
+def _valuations(con) -> list[dict]:
+    """Additions add cost and post nothing; a revaluation / impairment moves the accumulated depreciation and impairment by
+    its amount, split between profit or loss and the revaluation surplus, and an asset's surplus never goes below zero."""
+    from .settings import get_settings
+    out = []
+    st = get_settings(con)
+    imp, sur = st.get("ImpairmentAccountID"), st.get("RevaluationSurplusAccountID")
+    surplus: dict[int, float] = {}
+    for t in rows(con, """SELECT T.*, A.AssetCode, C.AccumDepAccountID FROM tbl_AssetTransactions T JOIN tbl_Assets A ON A.AssetID=T.AssetID
+            JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID WHERE T.TransactionType IN ('ADDITION','IMPAIRMENT','REVALUATION')
+            ORDER BY T.AssetID, T.TransactionDate, T.TransactionID""", raw=True):
+        code, amount = t["AssetCode"], t["Amount"] or 0
+        j = rows(con, "SELECT * FROM tbl_DepreciationJournal WHERE TransactionID=?", (t["TransactionID"],), raw=True)
+        if t["TransactionType"] == "ADDITION":
+            if amount <= 0 or j:
+                out.append(_issue(f"{code}: a capital addition must be a positive cost with no journal", asset=t["AssetID"]))
+            continue
+        if (t["TransactionType"] == "IMPAIRMENT") != (amount < 0):
+            out.append(_issue(f"{code}: an impairment lowers the carrying amount and a revaluation raises it", asset=t["AssetID"]))
+        net = lambda acc: sum(x["DebitAmount"] - x["CreditAmount"] for x in j if str(x["GLAccountID"]) == str(acc))
+        pnl, sp = t["PnlAmount"] or 0, t["SurplusAmount"] or 0
+        if abs(-pnl + sp - amount) > EPS:
+            out.append(_issue(f"{code}: profit or loss and surplus do not add up to the change of {r2(amount)}", asset=t["AssetID"]))
+        if abs(net(t["AccumDepAccountID"]) - amount) > EPS or abs(net(imp) - pnl) > EPS or abs(-net(sur) - sp) > EPS:
+            out.append(_issue(f"{code}: the journal of {t['TransactionType'].lower()} {r2(amount)} does not match it", asset=t["AssetID"]))
+        surplus[t["AssetID"]] = surplus.get(t["AssetID"], 0) + sp
+        if surplus[t["AssetID"]] < -EPS:
+            out.append(_issue(f"{code}: the revaluation surplus went below zero", asset=t["AssetID"]))
     return out
 
 
@@ -154,21 +205,27 @@ def _reports_tie(con) -> list[dict]:
     out = []
     today = date.today().isoformat()
     reg = reports.asset_state(con, today)
+    moves = _moves(con)
     book = rows(con, """SELECT A.AssetID, A.AcquisitionCost, COALESCE(A.OpeningAccumDep,0) + COALESCE((SELECT SUM(D.PeriodDepreciation) FROM tbl_Depreciation D
         JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID WHERE D.AssetID=A.AssetID AND D.PostingStatus='POSTED' AND P.EndDate<=?),0) AS Accum
         FROM tbl_Assets A WHERE A.AcquisitionDate<=? AND (A.DisposalDate IS NULL OR A.DisposalDate>?)""", (today, today, today), raw=True)
-    for key, a, b in (("cost", sum(r["Cost"] for r in reg), sum(r["AcquisitionCost"] or 0 for r in book)),
-                      ("accumulated depreciation", sum(r["AccumDep"] for r in reg), sum(r["Accum"] for r in book))):
+    at = {b["AssetID"]: _at(moves.get(b["AssetID"], []), today) for b in book}
+    for key, a, b in (("cost", sum(r["Cost"] for r in reg), sum((r["AcquisitionCost"] or 0) + at[r["AssetID"]][0] for r in book)),
+                      ("accumulated depreciation", sum(r["AccumDep"] for r in reg), sum(r["Accum"] for r in book)),
+                      ("revaluation / impairment", sum(r["ValueAdj"] for r in reg), sum(at[r["AssetID"]][1] for r in book))):
         if abs(r2(a) - r2(b)) > EPS:
             out.append(_issue(f"Asset register {key} {r2(a)} differs from the books {r2(b)}"))
     first = one(con, "SELECT MIN(StartDate) s FROM tbl_DepreciationPeriods WHERE FiscalYear=?", (date.today().year,), raw=True)["s"]
     if first and first <= today:
         rf = reports.rollforward(con, {"from": first, "to": today})
-        tot = {k: sum(g[k] for g in rf["rows"]) for k in ("OpenCost", "Additions", "Disposals", "CloseCost", "OpenDep", "BroughtIn", "Charge", "DepDisposed", "CloseDep", "NBV")}
+        tot = {k: sum(g[k] for g in rf["rows"]) for k in ("OpenCost", "Additions", "Disposals", "CloseCost", "OpenDep", "BroughtIn", "Charge",
+                                                         "Impairment", "DepDisposed", "CloseDep", "NBV")}
         posted = one(con, """SELECT COALESCE(SUM(D.PeriodDepreciation),0) s FROM tbl_Depreciation D JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID
             WHERE D.PostingStatus='POSTED' AND P.EndDate>=? AND P.EndDate<=?""", (first, today), raw=True)["s"]
-        checks = [("closing cost", tot["CloseCost"], sum(r["Cost"] for r in reg)), ("closing accumulated depreciation", tot["CloseDep"], sum(r["AccumDep"] for r in reg)),
+        checks = [("closing cost", tot["CloseCost"], sum(r["Cost"] for r in reg)),
+                  ("closing accumulated depreciation and impairment", tot["CloseDep"], sum(r["AccumDep"] - r["ValueAdj"] for r in reg)),
                   ("depreciation charge", tot["Charge"], posted), ("net book value", tot["NBV"], tot["CloseCost"] - tot["CloseDep"]),
+                  ("net book value", tot["NBV"], sum(r["NBV"] for r in reg)),
                   ("cost movement", tot["CloseCost"], tot["OpenCost"] + tot["Additions"] - tot["Disposals"])]
         for name, a, b in checks:
             if abs(r2(a) - r2(b)) > 0.01 + EPS:   # report rows are rounded per group
@@ -194,6 +251,7 @@ CHECKS = [
     ("depreciation-journal", "Posted depreciation equals its journal", _depreciation_journal),
     ("journal-balanced", "Every journal entry balances", _journal_balanced),
     ("disposals", "Disposals remove cost and depreciation correctly", _disposals),
+    ("valuations", "Additions, revaluations and impairments post correctly", _valuations),
     ("vat", "VAT and invoice amounts agree", _vat),
     ("periods", "Periods are whole months without gaps", _periods),
     ("reports-tie", "Reports tie to the books", _reports_tie),

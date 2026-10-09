@@ -8,6 +8,7 @@ import { chartsDashboardPage } from "../pages/reports/dashboard.js";
 import { assetImportPage } from "../pages/assets/import.js";
 import { assetLabelsPage } from "../pages/assets/labels.js";
 import { countPage, countsListPage } from "../pages/assets/counts.js";
+import { ledgerPage } from "../pages/assets/ledger.js";
 import { custodyFormPage, custodyListPage, handoverFormPage } from "../pages/contacts/custody.js";
 import { employeeFormPage, employeesListPage } from "../pages/contacts/employees.js";
 import { supplierFormPage, suppliersListPage } from "../pages/contacts/suppliers.js";
@@ -34,6 +35,7 @@ export const ROUTES = [
     { re: /^periods$/, fn: periodsPage, nav: "#/periods", crumb: "Depreciation periods" },
     { re: /^journal$/, fn: journalPage, nav: "#/journal", crumb: "Fixed asset journal" },
     { re: /^transactions$/, fn: transactionsPage, nav: "#/transactions", crumb: "Fixed asset transactions" },
+    { re: /^ledger$/, fn: ledgerPage, nav: "#/ledger", crumb: "Fixed asset ledger" },
     { re: /^audit$/, fn: auditPage, nav: "#/audit", crumb: "Audit log" },
     { re: /^integrity$/, fn: integrityPage, nav: "#/integrity", crumb: "Data checks" },
     { re: /^reports$/, fn: reportsIndexPage, nav: "#/reports", crumb: "Reports" },
@@ -56,7 +58,7 @@ export const NAV = [
         ] },
     { label: "Suppliers", icon: "truck", href: "#/suppliers" },
     { label: "Accounting", icon: "journal", href: "#/journal", children: [
-            { label: "Fixed asset journal", href: "#/journal" }, { label: "Fixed asset transactions", href: "#/transactions" },
+            { label: "Fixed asset ledger", href: "#/ledger" }, { label: "Fixed asset journal", href: "#/journal" },
             { label: "Data checks", href: "#/integrity" }, { label: "Audit log", href: "#/audit" }
         ] },
     { label: "Reports", icon: "report", href: "#/reports", children: [
@@ -72,7 +74,7 @@ export function permFor(href) {
         return "maintenance.edit";
     if (/^#\/(suppliers|employees)\/new/.test(href))
         return "contacts.edit";
-    if (/^#\/(assets|counts)/.test(href))
+    if (/^#\/(assets|counts|ledger)/.test(href))
         return "assets.view";
     if (/^#\/maintenance/.test(href))
         return "maintenance.view";

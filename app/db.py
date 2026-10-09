@@ -172,6 +172,13 @@ CREATE TABLE IF NOT EXISTS tbl_AssetCountLines(
   FoundLocationID INTEGER REFERENCES tbl_Locations(LocationID), FoundAt TEXT, FoundBy TEXT, Notes TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS ix_countline_asset ON tbl_AssetCountLines(CountID, AssetID) WHERE AssetID IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_countline_count ON tbl_AssetCountLines(CountID);
+CREATE TABLE IF NOT EXISTS tbl_Branches(
+  BranchID INTEGER PRIMARY KEY AUTOINCREMENT,
+  BranchCode TEXT NOT NULL UNIQUE, BranchName TEXT NOT NULL, BranchNameAr TEXT,
+  CountryCode TEXT NOT NULL, City TEXT, Region TEXT, IsActive INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS tbl_UserBranches(
+  UserID INTEGER NOT NULL REFERENCES tbl_Users(UserID) ON DELETE CASCADE,
+  BranchID INTEGER NOT NULL REFERENCES tbl_Branches(BranchID), PRIMARY KEY(UserID, BranchID));
 CREATE TABLE IF NOT EXISTS tbl_AuditLog(
   LogID INTEGER PRIMARY KEY AUTOINCREMENT,
   LogDate TEXT NOT NULL, UserName TEXT, Action TEXT, Entity TEXT, EntityID TEXT, Details TEXT);
@@ -190,6 +197,8 @@ DEFAULT_SETTINGS = [
     ("DepreciationStartRule", "IN_SERVICE_DATE", "Depreciation start rule"),
     ("AttachmentFolder", "", "Root folder for asset attachments"),
     ("DisposalClearingAccountID", "", "GL account that receives disposal proceeds"),
+    ("ImpairmentAccountID", "", "GL account for impairment losses and their reversals"),
+    ("RevaluationSurplusAccountID", "", "GL account (equity) for the revaluation surplus"),
     ("BackupFolder", "", "Folder where backups are written"),
     ("VATEnabled", "1", "Track value added tax on purchases"),
     ("VATRate", "15", "Standard VAT rate (%)"),
@@ -239,6 +248,23 @@ def _seed_arabic(con) -> None:
         con.execute("UPDATE tbl_GLAccounts SET AccountNameAr=? WHERE AccountName=? AND AccountNameAr IS NULL", (ar, en))
 
 
+def _seed_valuation(con) -> None:
+    """Declining balance, and the accounts revaluations and impairments post to (created once, only when not set yet)."""
+    if not con.execute("SELECT 1 FROM tbl_GLAccounts LIMIT 1").fetchone():
+        return   # an empty database (first run, before the Access export is loaded)
+    con.execute("INSERT INTO tbl_DepreciationMethods(MethodCode,MethodName,MethodNameAr) SELECT 'DB','Declining Balance','القسط المتناقص' "
+                "WHERE NOT EXISTS (SELECT 1 FROM tbl_DepreciationMethods WHERE MethodCode='DB')")
+    for key, code, name, name_ar, kind in (("ImpairmentAccountID", "620102", "Impairment Loss on Fixed Assets", "خسائر الانخفاض في قيمة الأصول الثابتة", "OTHER EXPENSE"),
+                                           ("RevaluationSurplusAccountID", "330101", "Revaluation Surplus", "فائض إعادة التقييم", "EQUITY")):
+        cur = con.execute("SELECT SettingValue FROM tbl_Settings WHERE SettingKey=?", (key,)).fetchone()
+        if cur and cur[0]:
+            continue
+        con.execute("INSERT INTO tbl_GLAccounts(AccountCode,AccountName,AccountNameAr,AccountType) SELECT ?,?,?,? "
+                    "WHERE NOT EXISTS (SELECT 1 FROM tbl_GLAccounts WHERE AccountCode=?)", (code, name, name_ar, kind, code))
+        gid = con.execute("SELECT GLAccountID FROM tbl_GLAccounts WHERE AccountCode=?", (code,)).fetchone()[0]
+        con.execute("UPDATE tbl_Settings SET SettingValue=? WHERE SettingKey=?", (str(gid), key))
+
+
 CURRENCIES = [
     ("SAR", "Saudi Riyal", "ريال سعودي", "SAR"), ("USD", "US Dollar", "دولار أمريكي", "$"), ("EUR", "Euro", "يورو", "€"),
     ("GBP", "British Pound", "جنيه إسترليني", "£"), ("AED", "UAE Dirham", "درهم إماراتي", "AED"), ("KWD", "Kuwaiti Dinar", "دينار كويتي", "KWD"),
@@ -256,10 +282,24 @@ def init_db() -> None:
     con.executescript(SCHEMA)
     for table, col, ctype in [(t, c, "TEXT") for t, c in ARABIC_COLUMNS] + [("tbl_Assets", "SupplierID", "INTEGER"), ("tbl_Maintenance", "SupplierID", "INTEGER"),
                                                  ("tbl_Assets", "VatApplicable", "INTEGER NOT NULL DEFAULT 0"), ("tbl_Assets", "VatInclusive", "INTEGER NOT NULL DEFAULT 0"),
-                                                 ("tbl_AssetAttachments", "CustodyID", "INTEGER"), ("tbl_Assets", "VatRate", "REAL"), ("tbl_Assets", "PurchaseAmount", "REAL"), ("tbl_Assets", "VatAmount", "REAL NOT NULL DEFAULT 0")]:
+                                                 ("tbl_AssetAttachments", "CustodyID", "INTEGER"), ("tbl_Assets", "VatRate", "REAL"), ("tbl_Assets", "PurchaseAmount", "REAL"), ("tbl_Assets", "VatAmount", "REAL NOT NULL DEFAULT 0"),
+                                                 ("tbl_Locations", "BranchID", "INTEGER REFERENCES tbl_Branches(BranchID)"),
+                                                 ("tbl_AssetTransactions", "PnlAmount", "REAL"), ("tbl_AssetTransactions", "SurplusAmount", "REAL")]:
         # upgrade databases created before these columns existed
         if col not in [r["name"] for r in con.execute(f"PRAGMA table_info({table})")]:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ctype}")
+    # indexes for a large register (hundreds of locations, tens of thousands of assets)
+    con.executescript("""
+CREATE INDEX IF NOT EXISTS ix_loc_branch ON tbl_Locations(BranchID);
+CREATE INDEX IF NOT EXISTS ix_assets_location ON tbl_Assets(LocationID);
+CREATE INDEX IF NOT EXISTS ix_assets_category ON tbl_Assets(CategoryID);
+CREATE INDEX IF NOT EXISTS ix_assets_status ON tbl_Assets(AssetStatus);
+CREATE INDEX IF NOT EXISTS ix_tx_type_date ON tbl_AssetTransactions(TransactionType, TransactionDate);
+CREATE INDEX IF NOT EXISTS ix_jr_dep ON tbl_DepreciationJournal(DepreciationID);
+CREATE INDEX IF NOT EXISTS ix_jr_tx ON tbl_DepreciationJournal(TransactionID);
+CREATE INDEX IF NOT EXISTS ix_jr_date ON tbl_DepreciationJournal(JournalDate);
+CREATE INDEX IF NOT EXISTS ix_dep_status ON tbl_Depreciation(PostingStatus, AssetID);
+""")
     _seed_arabic(con)
     con.execute("UPDATE tbl_Assets SET PurchaseAmount=AcquisitionCost WHERE PurchaseAmount IS NULL")
     # only insert what is missing (INSERT OR IGNORE still advances the AUTOINCREMENT counter on every start)
@@ -269,6 +309,7 @@ def init_db() -> None:
     for key, val, desc in DEFAULT_SETTINGS:
         con.execute("INSERT INTO tbl_Settings(SettingKey,SettingValue,SettingDescription) "
                     "SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM tbl_Settings WHERE SettingKey=?)", (key, val, desc, key))
+    _seed_valuation(con)
     for t, pk in (("tbl_Settings", "SettingID"), ("tbl_Currencies", "CurrencyID")):  # one-off tidy of counters that already ran ahead
         con.execute("UPDATE sqlite_sequence SET seq=(SELECT COALESCE(MAX(%s),0) FROM %s) WHERE name=?" % (pk, t), (t,))
     con.commit()
@@ -345,6 +386,7 @@ def migrate_from_access(export: Path = EXPORT_PATH) -> dict:
                       "VALUES('199901','Fixed Asset Disposal Clearing','CLEARING')")
     gid = con.execute("SELECT GLAccountID FROM tbl_GLAccounts WHERE AccountCode='199901'").fetchone()[0]
     con.execute("UPDATE tbl_Settings SET SettingValue=? WHERE SettingKey='DisposalClearingAccountID'", (str(gid),))
+    _seed_valuation(con)
     # keep AUTOINCREMENT counters beyond imported ids
     con.commit()
     counts = {t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]

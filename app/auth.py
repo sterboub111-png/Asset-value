@@ -15,6 +15,7 @@ from typing import Any
 import time
 
 from .services import ApiError, audit, one, rows, set_actor, now, to_int
+from .services.branches import set_user_branches, user_branches
 
 PBKDF2_ROUNDS = 200_000
 SESSION_IDLE_HOURS = 12
@@ -28,6 +29,7 @@ COOKIE = "gooya_session"
 PERMISSIONS: list[tuple[str, str, str]] = [
     ("assets.view", "Fixed assets", "View fixed assets"), ("assets.edit", "Fixed assets", "Create and edit assets, transfer, change status, attach files"),
     ("assets.delete", "Fixed assets", "Delete assets"), ("assets.dispose", "Fixed assets", "Dispose assets"),
+    ("assets.value", "Fixed assets", "Record capital additions, revaluations and impairments"),
     ("depreciation.view", "Depreciation", "View depreciation and periods"), ("depreciation.run", "Depreciation", "Create and discard depreciation proposals"),
     ("depreciation.post", "Depreciation", "Post depreciation"), ("periods.manage", "Depreciation", "Generate, close and reopen periods"),
     ("maintenance.view", "Maintenance", "View maintenance orders"), ("maintenance.edit", "Maintenance", "Create and work on maintenance orders"),
@@ -44,7 +46,7 @@ VIEW_KEYS = [k for k in ALL_KEYS if k.endswith(".view") and k not in ("settings.
 SEED_ROLES = [
     ("Administrator", "مدير النظام", "Full access, including users and settings.", ALL_KEYS, True),
     ("Asset Accountant", "محاسب أصول", "Assets, depreciation, periods and reports.",
-     ["assets.view", "assets.edit", "assets.dispose", "depreciation.view", "depreciation.run", "depreciation.post", "periods.manage", "maintenance.view",
+     ["assets.view", "assets.edit", "assets.dispose", "assets.value", "depreciation.view", "depreciation.run", "depreciation.post", "periods.manage", "maintenance.view",
       "contacts.view", "custody.view", "reports.view", "inquiries.view", "settings.view"], False),
     ("Asset Officer", "مسؤول أصول وعهد", "Registers assets, maintenance, suppliers, employees and custody.",
      ["assets.view", "assets.edit", "maintenance.view", "maintenance.edit", "contacts.view", "contacts.edit", "custody.view", "custody.manage", "reports.view"], False),
@@ -87,6 +89,10 @@ def seed(con) -> None:
         cur = con.execute("INSERT INTO tbl_Roles(RoleName,RoleNameAr,Description,IsSystem) VALUES(?,?,?,?)", (name, name_ar, desc, 1 if system else 0))
         if not system:
             con.executemany("INSERT INTO tbl_RolePermissions(RoleID,Permission) VALUES(?,?)", [(cur.lastrowid, p) for p in dict.fromkeys(perms)])
+    # once, when the permission arrives: roles that dispose assets also record additions, revaluations and impairments
+    if not one(con, "SELECT 1 x FROM tbl_Settings WHERE SettingKey='_granted.assets.value'", raw=True):
+        con.execute("INSERT OR IGNORE INTO tbl_RolePermissions(RoleID,Permission) SELECT RoleID,'assets.value' FROM tbl_RolePermissions WHERE Permission='assets.dispose'")
+        con.execute("INSERT INTO tbl_Settings(SettingKey,SettingValue,SettingDescription,IsActive) VALUES('_granted.assets.value','1','One-time permission upgrade',0)")
     con.commit()
 
 
@@ -167,13 +173,18 @@ def _decorate(u: dict) -> dict:
 
 
 def list_users(con) -> list[dict]:
-    return [_decorate(u) for u in rows(con, USER_SQL + " ORDER BY U.UserName", raw=True)]
+    out = [_decorate(u) for u in rows(con, USER_SQL + " ORDER BY U.UserName", raw=True)]
+    for u in out:
+        u["Branches"] = user_branches(con, u["UserID"])
+        u["BranchCount"] = len(u["Branches"])
+    return out
 
 
 def get_user(con, uid: int) -> dict:
     u = one(con, USER_SQL + " WHERE U.UserID=?", (uid,), raw=True)
     if not u:
         raise ApiError("User not found", 404)
+    u["Branches"] = user_branches(con, uid)
     return _decorate(u)
 
 
@@ -235,6 +246,8 @@ def save_user(con, data: dict, uid: int | None = None, me_id: int | None = None)
         if password:
             con.execute("UPDATE tbl_Users SET FailedAttempts=0, LockedUntil=NULL WHERE UserID=?", (uid,))
         audit(con, "USER UPDATE", "tbl_Users", uid, v["UserName"] + (" (password reset)" if password else ""))
+    if "Branches" in data:   # none = every branch
+        set_user_branches(con, uid, data.get("Branches"))
     con.commit()
     return get_user(con, uid)
 
@@ -308,12 +321,13 @@ def session_user(con, token: str | None) -> dict | None:
                     (t.strftime("%Y-%m-%d %H:%M:%S"), (t + timedelta(hours=SESSION_IDLE_HOURS)).strftime("%Y-%m-%d %H:%M:%S"), h))
         con.commit()
     u["permissions"] = role_permissions(con, u["RoleID"])
+    u["branches"] = user_branches(con, u["UserID"])
     return _decorate(u)
 
 
 def me(u: dict) -> dict:
-    keep = ("UserID", "UserName", "FullName", "FullNameAr", "Email", "Phone", "RoleID", "RoleName", "RoleNameAr", "IsAdmin", "MustChangePassword", "Language", "Theme", "permissions")
-    return {k: u[k] for k in keep}
+    keep = ("UserID", "UserName", "FullName", "FullNameAr", "Email", "Phone", "RoleID", "RoleName", "RoleNameAr", "IsAdmin", "MustChangePassword", "Language", "Theme", "permissions", "branches")
+    return {k: u.get(k) for k in keep}
 
 
 def needs_setup(con) -> bool:
@@ -425,6 +439,9 @@ def required_permission(method: str, path: str) -> str | None:
         (r"^/api/settings$", "settings.view" if read else None),   # writes are checked per key in the handler
         (r"^/api/master/", "settings.view" if read else "settings.manage"),
         (r"^/api/assets/\d+/dispose$", "assets.dispose"),
+        (r"^/api/assets/\d+/(addition|revalue)$", "assets.value"),
+        (r"^/api/branches", "assets.view" if read else "settings.manage"),
+        (r"^/api/ledger", "assets.view"),
         (r"^/api/assets", "assets.view" if read else ("assets.delete" if method == "DELETE" and re.fullmatch(r"/api/assets/\d+", path) else "assets.edit")),
         (r"^/api/attachments/", "assets.view" if read else "assets.edit"),
         (r"^/api/depreciation/\d+/post$", "depreciation.post"),

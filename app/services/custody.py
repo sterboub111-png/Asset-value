@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from .common import ApiError, actor, audit, now, one, parse_date, rows, to_int
+from .common import ApiError, actor, audit, now, one, parse_date, rows, scope_sql, to_int
 from .settings import get_settings
 
 # ---------------------------------------------------------------- asset custody (employee handover)
@@ -16,7 +16,7 @@ CUSTODY_SQL = """SELECT U.*, A.AssetCode, A.AssetName, A.AssetNameAr, A.SerialNu
 
 
 def list_custody(con, status: str = "", employee: str = "", asset: str = "") -> list[dict]:
-    sql, args = CUSTODY_SQL + " WHERE 1=1", []
+    sql, args = CUSTODY_SQL + " WHERE 1=1" + scope_sql("A"), []
     if status in ("Issued", "Returned"):
         sql += " AND U.Status=?"
         args.append(status)
@@ -30,7 +30,7 @@ def list_custody(con, status: str = "", employee: str = "", asset: str = "") -> 
 
 
 def get_custody(con, cid: int) -> dict:
-    cu = one(con, CUSTODY_SQL + " WHERE U.CustodyID=?", (cid,), raw=True)
+    cu = one(con, CUSTODY_SQL + " WHERE U.CustodyID=?" + scope_sql("A"), (cid,), raw=True)
     if not cu:
         raise ApiError("Custody record not found", 404)
     cu["attachments"] = rows(con, "SELECT * FROM tbl_AssetAttachments WHERE CustodyID=? ORDER BY AttachmentID DESC", (cid,), raw=True)
@@ -50,7 +50,7 @@ def _next_custody_no(con) -> str:
 def issue_custody(con, data: dict) -> dict:
     aid = to_int(data.get("AssetID"), "AssetID")
     eid = to_int(data.get("EmployeeID"), "EmployeeID")
-    asset = one(con, "SELECT AssetID, AssetCode, AssetStatus, AcquisitionDate FROM tbl_Assets WHERE AssetID=?", (aid,), raw=True)
+    asset = one(con, "SELECT AssetID, AssetCode, AssetStatus, AcquisitionDate FROM tbl_Assets A WHERE AssetID=?" + scope_sql("A"), (aid,), raw=True)
     emp = one(con, "SELECT EmployeeID, EmployeeCode, IsActive FROM tbl_Employees WHERE EmployeeID=?", (eid,), raw=True)
     if not asset:
         raise ApiError("Asset is required")

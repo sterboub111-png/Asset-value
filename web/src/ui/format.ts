@@ -32,7 +32,7 @@ export const today = () => { const d = new Date(); return `${d.getFullYear()}-${
 
 const STATUS_CLASS: Record<string, string> = {
   Active: "ok", POSTED: "ok", OPEN: "ok", Posted: "ok", Draft: "info", DRAFT: "info", Issued: "warn", Locked: "err", Returned: "", Attached: "ok", Missing: "warn", Planned: "info", "In Progress": "warn", Completed: "ok", Cancelled: "", High: "err", Medium: "warn", Low: "", Overdue: "err", NEW: "info", Inactive: "", "Under Repair": "warn",
-  Disposed: "err", CLOSED: "warn", ACQUISITION: "ok", DISPOSAL: "err", TRANSFER: "info", STATUS: "warn",
+  Disposed: "err", CLOSED: "warn", ACQUISITION: "ok", DISPOSAL: "err", TRANSFER: "info", STATUS: "warn", ADDITION: "ok", IMPAIRMENT: "warn", REVALUATION: "info", DEPRECIATION: "",
 };
 /** A status or type code as people read it: its translation, else "DEPRECIATION" -> "Depreciation" (codes are stored upper case). */
 export function codeLabel(code: string): string {

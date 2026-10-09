@@ -4,7 +4,7 @@ from __future__ import annotations
 from urllib.parse import unquote
 
 from ... import auth, services as s
-from ...services import importer
+from ...services import importer, ledger
 
 from ..router import route
 
@@ -80,6 +80,28 @@ def _at(c, i): return _asset_out(c, s.transfer_asset(c.con, int(i), c.body))
 
 @route("POST", "/api/assets/(\\d+)/dispose")
 def _adp(c, i): return _asset_out(c, s.dispose_asset(c.con, int(i), c.body))
+
+@route("POST", "/api/assets/(\\d+)/addition")
+def _aadd(c, i):
+    """A capital addition; ?dry=1 returns the preview (cost, NBV and monthly depreciation before and after)."""
+    res = s.add_capital(c.con, int(i), c.body, c.q("dry") == "1")
+    return res if c.q("dry") == "1" else _asset_out(c, res)
+
+@route("POST", "/api/assets/(\\d+)/revalue")
+def _arev(c, i):
+    """A revaluation or impairment to a new carrying amount; ?dry=1 returns the preview with the profit or loss / surplus split."""
+    res = s.revalue(c.con, int(i), c.body, c.q("dry") == "1")
+    return res if c.q("dry") == "1" else _asset_out(c, res)
+
+# ---- fixed asset ledger entries
+@route("GET", "/api/ledger")
+def _ledger(c):
+    return ledger.ledger(c.con, s.to_int(c.q("asset"), "Asset") or None, c.q("from") or None, c.q("to") or None, c.q("type"), c.q("q"),
+                         s.to_int(c.q("branch"), "Branch") or None, c.q("limit") or 500, c.q("offset") or 0)
+
+@route("GET", "/api/ledger/journal")
+def _ledger_j(c):
+    return ledger.entry_journal(c.con, s.to_int(c.q("tx"), "Entry") or None, s.to_int(c.q("dep"), "Entry") or None)
 
 @route("POST", "/api/assets/(\\d+)/attachments")
 def _aa(c, i):

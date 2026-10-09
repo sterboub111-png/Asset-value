@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 
 from .assets import transfer_asset
-from .common import ApiError, actor, audit, now, one, parse_date, rows, to_int
+from .common import ApiError, actor, audit, in_scope, unscoped, now, one, parse_date, rows, scope_sql, to_int
 
 COUNT_SQL = """SELECT C.*, L.LocationName, L.LocationNameAr,
   (SELECT COUNT(*) FROM tbl_AssetCountLines X WHERE X.CountID=C.CountID AND X.Expected=1) AS ExpectedCount,
@@ -43,11 +43,11 @@ def _result(line: dict) -> str:
 
 
 def list_counts(con) -> list[dict]:
-    return rows(con, COUNT_SQL + " ORDER BY C.CountDate DESC, C.CountID DESC")
+    return rows(con, COUNT_SQL + " WHERE 1=1" + scope_sql("C") + " ORDER BY C.CountDate DESC, C.CountID DESC")
 
 
 def get_count(con, cid: int) -> dict:
-    c = one(con, COUNT_SQL + " WHERE C.CountID=?", (cid,))
+    c = one(con, COUNT_SQL + " WHERE C.CountID=?" + scope_sql("C"), (cid,))
     if not c:
         raise ApiError("Count not found", 404)
     lines = rows(con, LINE_SQL + " WHERE X.CountID=? ORDER BY X.Found, A.AssetCode, X.LineID", (cid,))
@@ -73,6 +73,8 @@ def _next_no(con) -> str:
 def create_count(con, data: dict) -> dict:
     d = parse_date(data.get("CountDate"), "Count date", True)
     loc = to_int(data.get("LocationID"), "Location") or None
+    if not in_scope(con, loc):
+        raise ApiError("Choose a location in the branches you work in")
     if loc and not one(con, "SELECT 1 x FROM tbl_Locations WHERE LocationID=?", (loc,), raw=True):
         raise ApiError("Location not found")
     if one(con, "SELECT 1 x FROM tbl_AssetCounts WHERE Status='Open' AND COALESCE(LocationID,0)=?", (loc or 0,), raw=True):
@@ -91,7 +93,7 @@ def create_count(con, data: dict) -> dict:
 
 
 def _open(con, cid: int) -> dict:
-    c = one(con, "SELECT * FROM tbl_AssetCounts WHERE CountID=?", (cid,), raw=True)
+    c = one(con, "SELECT * FROM tbl_AssetCounts C WHERE CountID=?" + scope_sql("C"), (cid,), raw=True)
     if not c:
         raise ApiError("Count not found", 404)
     if c["Status"] != "Open":
@@ -158,10 +160,11 @@ def close_count(con, cid: int, data: dict) -> dict:
     if data.get("apply_locations") in (True, 1, "1", "true"):
         for ln in get_count(con, cid)["lines"]:
             if ln["Result"] == "moved" or (ln["Result"] == "extra" and ln["FoundLocationID"] and ln["FoundLocationID"] != ln["BookLocationID"]):
-                a = one(con, "SELECT CostCenterID FROM tbl_Assets WHERE AssetID=?", (ln["AssetID"],), raw=True)
-                transfer_asset(con, ln["AssetID"], {"TransactionDate": max(c["CountDate"], one(con, "SELECT AcquisitionDate d FROM tbl_Assets WHERE AssetID=?", (ln["AssetID"],), raw=True)["d"]),
-                                                    "ToLocationID": ln["FoundLocationID"], "ToCostCenterID": a["CostCenterID"],
-                                                    "ReferenceNumber": c["CountNo"], "Notes": "Found at this location during the physical count"})
+                a = one(con, "SELECT CostCenterID, AcquisitionDate FROM tbl_Assets WHERE AssetID=?", (ln["AssetID"],), raw=True)
+                with unscoped():   # an asset of another branch found here comes into this (in-scope) location
+                    transfer_asset(con, ln["AssetID"], {"TransactionDate": max(c["CountDate"], a["AcquisitionDate"]),
+                                                        "ToLocationID": ln["FoundLocationID"], "ToCostCenterID": a["CostCenterID"],
+                                                        "ReferenceNumber": c["CountNo"], "Notes": "Found at this location during the physical count"})
                 moved += 1
     con.execute("UPDATE tbl_AssetCounts SET Status='Closed', ClosedAt=?, ClosedBy=? WHERE CountID=?", (now(), actor(), cid))
     s = get_count(con, cid)["summary"]

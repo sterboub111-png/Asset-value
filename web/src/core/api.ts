@@ -7,8 +7,13 @@ export class ApiError extends Error {}
 /** Set by the app shell: called when the session has ended (401) or a password change is required (403). */
 export const hooks: { onUnauthorized: (() => void) | null; onMustChange: (() => void) | null } = { onUnauthorized: null, onMustChange: null };
 
+/** The branch picker's choice ('' = everything the user may see, 'country:SA', 'branch:12'); the server applies it to every call. */
+const SCOPE_KEY = "usool.scope";
+export function getScope(): string { try { return localStorage.getItem(SCOPE_KEY) || ""; } catch { return ""; } }
+export function setScope(v: string): void { try { localStorage.setItem(SCOPE_KEY, v); } catch { /* ignore */ } }
+
 async function call<T>(method: string, url: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
-  const init: RequestInit = { method, headers: { "X-Lang": getLang(), "X-Requested-With": "GooyaAsset", ...headers } };
+  const init: RequestInit = { method, headers: { "X-Lang": getLang(), "X-Requested-With": "GooyaAsset", "X-Scope": getScope(), ...headers } };
   if (body instanceof ArrayBuffer || body instanceof Blob) {
     init.body = body;
   } else if (body !== undefined) {

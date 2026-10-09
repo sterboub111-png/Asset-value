@@ -25,6 +25,7 @@ const ICONS: Record<string, string> = {
   logout: '<path d="M6.5 2.5h-3v11h3M10 5l3 3-3 3M13 8H6"/>', key: '<circle cx="5.5" cy="10.5" r="2.5"/><path d="M7.3 8.7 13 3M11 5l1.5 1.5M9.5 6.5 11 8"/>',
   globe: '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>', back: '<path d="M9.5 3 4.5 8l5 5M4.5 8h9"/>',
   lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>', unlock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 4.8-1"/>',
+  branch: '<path d="M2.5 14V5.5L8 2.5l5.5 3V14M1.5 14h13M6.5 14v-3h3v3M5.5 7.5h1M9.5 7.5h1"/>', trend: '<path d="M2 12.5 6 8.5l2.5 2.5L14 5.5M10.5 5.5H14V9"/>',
   play: '<path d="M4.5 2.5v11l9-5.5z"/>', filter: '<path d="M2 3h12l-4.5 5.5V13l-3-1.5V8.5z"/>', audit: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14M5 7l1.5 1.5L9 5.5"/>',
   warn: '<path d="M8 2 14.5 13.5h-13zM8 6.5v3.2M8 11.6v.4"/>', copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/>',
 };

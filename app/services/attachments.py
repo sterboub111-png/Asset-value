@@ -7,7 +7,9 @@ from pathlib import Path
 
 from .assets import get_asset
 from .files import _attach_root, _remove_file
-from .common import ApiError, actor, audit, now, one
+from .common import ApiError, actor, audit, now, one, scope_sql
+
+ATT_SQL = "SELECT T.* FROM tbl_AssetAttachments T JOIN tbl_Assets A ON A.AssetID=T.AssetID WHERE T.AttachmentID=?"
 
 def add_attachment(con, asset_id: int, filename: str, content: bytes, meta: dict) -> dict:
     a = get_asset(con, asset_id)
@@ -48,14 +50,14 @@ def add_attachment(con, asset_id: int, filename: str, content: bytes, meta: dict
 
 
 def get_attachment(con, att_id: int) -> dict:
-    att = one(con, "SELECT * FROM tbl_AssetAttachments WHERE AttachmentID=?", (att_id,))
+    att = one(con, ATT_SQL + scope_sql("A"), (att_id,))
     if not att or not Path(att["FilePath"] or "").is_file():
         raise ApiError("Attachment file not found", 404)
     return att
 
 
 def delete_attachment(con, att_id: int) -> dict:
-    att = one(con, "SELECT * FROM tbl_AssetAttachments WHERE AttachmentID=?", (att_id,))
+    att = one(con, ATT_SQL + scope_sql("A"), (att_id,))
     if not att:
         raise ApiError("Attachment not found", 404)
     _remove_file(att["FilePath"])

@@ -3,6 +3,9 @@ export type Rec = Record<string, any>;
 export interface Lookups {
   categories: Rec[];
   locations: Rec[];
+  branches: Rec[];
+  countries: { code: string; name: string; nameAr: string }[];
+  scope: number[] | null;   // branches this session sees (null = all)
   costcenters: Rec[];
   glaccounts: Rec[];
   methods: Rec[];
@@ -44,4 +47,5 @@ export interface ReportResult {
   totals?: string[];
   subtotal_only?: string[];
   order?: Record<string, string>;   // column -> hidden field that gives its natural order (period name -> period number)
+  hidden?: string[];                // columns kept for analysis, pivots and charts but not shown at first
 }

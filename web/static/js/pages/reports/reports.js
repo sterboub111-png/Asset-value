@@ -1,18 +1,19 @@
 import { api, lookups } from "../../core/api.js";
-import { t } from "../../core/i18n.js";
+import { getLang, t } from "../../core/i18n.js";
 import { getMe, userTitle } from "../../core/session.js";
 import { addPin } from "./dashboard.js";
 import { Analysis, codeLabel, combo, fold, Form, nm, cellValue, csvText, clear, downloadCsv, fail, fmtDate, h, opts, page, ribbon, toast, today } from "../../ui/index.js";
 export const REPORT_INFO = {
-    "asset-register": { title: "Fixed asset register", desc: "Cost, accumulated depreciation and net book value of every asset at a date." },
-    "asset-summary": { title: "Fixed asset summary", desc: "Totals by group, location or cost center at a date." },
-    rollforward: { title: "Fixed asset roll-forward", desc: "Opening balance, additions, disposals, depreciation and closing balance by group." },
+    "asset-register": { title: "Fixed asset register", desc: "Cost, accumulated depreciation, revaluation / impairment and net book value of every asset at a date, by country and branch." },
+    "asset-summary": { title: "Fixed asset summary", desc: "Totals by group, country, branch, region, location or cost center at a date." },
+    rollforward: { title: "Fixed asset roll-forward", desc: "Opening balance, additions, disposals, depreciation, impairment and closing balance by group, country or branch (IAS 16)." },
     "depreciation-schedule": { title: "Depreciation schedule", desc: "Depreciation lines per asset and period for a fiscal year." },
     "depreciation-forecast": { title: "Depreciation forecast", desc: "Depreciation still to come, month by month, for budgets: the same rules as the depreciation run." },
-    "depreciation-journal": { title: "Fixed asset journal postings", desc: "Posted debit and credit lines to the ledger accounts." },
+    "depreciation-journal": { title: "Fixed asset journal postings", desc: "Posted vouchers with their debit and credit lines; the summary gives the entry per account to post to the general ledger." },
+    revaluations: { title: "Additions, revaluations and impairments", desc: "Capital additions and changes of carrying amount, with the profit or loss and revaluation surplus of each." },
     "gl-balances": { title: "Ledger account balances", desc: "Fixed asset postings summarised by ledger account." },
     disposals: { title: "Disposals and gain / loss", desc: "Assets sold or scrapped, with net book value, proceeds and result." },
-    transactions: { title: "Asset transactions", desc: "Acquisitions, transfers, status changes and disposals." },
+    transactions: { title: "Asset transactions", desc: "Acquisitions, additions, transfers, revaluations, status changes and disposals, with document numbers." },
     "fully-depreciated": { title: "Fully depreciated assets", desc: "Assets still in use whose net book value reached the residual value." },
     "custody-by-employee": { title: "Custody by employee", desc: "What each employee received: assets, dates, condition and whether they are still held." },
     "employees-directory": { title: "Employees directory", desc: "All employees with their contact details and the number of assets they hold." },
@@ -96,6 +97,10 @@ export async function reportsGroupPage(_root, a) {
 }
 async function paramDefs(ids) {
     const L = await lookups();
+    const used = new Set(L.branches.filter((b) => !L.scope || L.scope.includes(b.BranchID)).map((b) => b.CountryCode));
+    const countries = L.countries.filter((c) => used.has(c.code)).map((c) => ({ value: c.code, label: getLang() === "ar" ? c.nameAr : c.name }));
+    const groupings = [{ value: "category", label: t("Fixed asset group") }, ...(L.branches.length ? [{ value: "country", label: t("Country") }, { value: "region", label: t("Region") },
+            { value: "branch", label: t("Branch") }] : []), { value: "location", label: t("Location") }, { value: "costcenter", label: t("Cost center") }];
     const map = {
         as_of: { name: "as_of", label: "As of date", type: "date" },
         from: { name: "from", label: "From date", type: "date" }, to: { name: "to", label: "To date", type: "date" },
@@ -104,11 +109,15 @@ async function paramDefs(ids) {
         location: { name: "location", label: "Location", type: "select", options: opts(L.locations, "LocationID", (c) => nm(c, "LocationName")) },
         costcenter: { name: "costcenter", label: "Cost center", type: "select", options: opts(L.costcenters, "CostCenterID", (c) => nm(c, "CostCenterName")) },
         status: { name: "status", label: "Status", type: "select", options: [...L.statuses, "Disposed"].map((s) => ({ value: s, label: t(s) })) },
-        group_by: { name: "group_by", label: "Group by", type: "select", required: true, options: [
-                { value: "category", label: t("Fixed asset group") }, { value: "location", label: t("Location") }, { value: "costcenter", label: t("Cost center") }
+        group_by: { name: "group_by", label: "Group by", type: "select", required: true, options: groupings },
+        rgroup: { name: "rgroup", label: "Group by", type: "select", required: true, options: groupings },
+        jview: { name: "jview", label: "Show", type: "select", required: true, options: [
+                { value: "detail", label: t("Every line (per asset)") }, { value: "summary", label: t("Summary per account (to post to the ledger)") }
             ] },
+        branch: { name: "branch", label: "Branch", type: "select", options: L.branches.filter((b) => !L.scope || L.scope.includes(b.BranchID)).map((b) => ({ value: b.BranchID, label: `${b.BranchCode} — ${nm(b, "BranchName")}` })) },
+        country: { name: "country", label: "Country", type: "select", options: countries },
         fiscal_year: { name: "fiscal_year", label: "Fiscal year", type: "number", step: "1", required: true },
-        type: { name: "type", label: "Transaction type", type: "select", options: ["ACQUISITION", "TRANSFER", "STATUS", "DISPOSAL"].map((s) => ({ value: s, label: t(s) })) },
+        type: { name: "type", label: "Transaction type", type: "select", options: ["ACQUISITION", "ADDITION", "TRANSFER", "IMPAIRMENT", "REVALUATION", "STATUS", "DISPOSAL"].map((s) => ({ value: s, label: codeLabel(s) })) },
         vat: { name: "vat", label: "VAT status", type: "select", options: [{ value: "1", label: t("With VAT") }, { value: "0", label: t("No VAT") }] },
         employee: { name: "employee", label: "Employee", type: "select", options: L.employees.map((e) => ({ value: e.EmployeeID, label: `${e.EmployeeCode} — ${nm(e, "EmployeeName")}` })) },
         cstatus: { name: "cstatus", label: "Custody status", type: "select", options: [{ value: "Issued", label: t("Issued") }, { value: "Returned", label: t("Returned") }] },
@@ -123,8 +132,8 @@ async function paramDefs(ids) {
         days: { name: "days", label: "Days ahead", type: "number", step: "1" },
         months: { name: "months", label: "Months ahead", type: "number", step: "1", required: true },
     };
-    // every report filter is a searchable lookup: type part of a name instead of scrolling a list
-    return ids.map((i) => (map[i].type === "select" ? { ...map[i], search: true } : map[i]));
+    // every report filter is a searchable lookup: type part of a name instead of scrolling a list; branch filters only once there are branches
+    return ids.filter((i) => !((i === "branch" || i === "country") && !L.branches.length)).map((i) => (map[i].type === "select" ? { ...map[i], search: true } : map[i]));
 }
 const VIEW_KEY = "usool.report.view";
 // ---- report periods (QuickBooks-style presets), on the fiscal year from the parameters
@@ -173,7 +182,7 @@ export async function reportPage(root, a) {
     const title = t(REPORT_INFO[id]?.title || id);
     const defs = await paramDefs(meta.params);
     const L = await lookups();
-    const defaults = { as_of: today(), from: yearStart(), to: today(), fiscal_year: String(new Date().getFullYear()), group_by: "category", mgroup: "asset", days: "30", months: "12" };
+    const defaults = { as_of: today(), from: yearStart(), to: today(), fiscal_year: String(new Date().getFullYear()), group_by: "category", rgroup: "category", jview: "detail", mgroup: "asset", days: "30", months: "12" };
     const params = {};
     // "run" marks optional fields the user left empty on purpose; required ones always fall back to their default
     for (const d of defs)
@@ -292,7 +301,7 @@ export function analysisOpts(r) {
     return {
         id: r.id, columns: cols, rows: r.rows, text, order: r.order,
         defaults: () => ({
-            cols: r.columns.map((c) => c.key), groups: r.group_by ? [r.group_by] : [],
+            cols: r.columns.filter((c) => !r.hidden?.includes(c.key)).map((c) => c.key), groups: r.group_by ? [r.group_by] : [],
             aggs: Object.fromEntries(cols.filter((c) => isNum(c.type)).map((c) => [c.key, summed.has(c.key) ? "sum" : "none"])),
             pivotOn: false, pivot: "", filters: {}, sort: null, collapsed: [],
         }),
@@ -324,14 +333,14 @@ function subtitleText(raw) {
 const ENUM_COLS = new Set(["SupplierType", "VatStatus", "Basis", "Status", "MaintenanceType", "Priority", "Timing", "Source", "TransactionType", "PostingStatus", "JournalType"]);
 const isNum = (type) => type === "money" || type === "int" || type === "pct";
 function renderReport(r, title, paramLines, user) {
-    const cols = r.columns;
+    const cols = r.columns.filter((c) => !r.hidden?.includes(c.key) && c.key !== r.group_by); // the grouping prints as the group heading
     const totalKeys = r.totals || [];
     const sum = (rows, key) => rows.reduce((s, x) => s + Number(x[key] || 0), 0);
     const tr = (cls, cells) => h("tr", { class: cls }, ...cells);
     const tbody = h("tbody");
     const ENUM = new Set(["SupplierType", "VatStatus", "Basis", "Status", "MaintenanceType", "Priority", "Timing", "Source", "TransactionType", "PostingStatus", "JournalType"]);
     // codes, references and dates never break across lines (an asset code would split at its hyphen)
-    const keep = (c) => isNum(c.type) || c.type === "date" || /Code$|^Reference$|No$/.test(c.key);
+    const keep = (c) => isNum(c.type) || c.type === "date" || /Code$|^Reference$|No$|^Document$/.test(c.key);
     const cell = (c, row) => h("td", { class: `${isNum(c.type) ? "num" : ""} ${keep(c) ? "nw" : ""}` }, ENUM.has(c.key) ? codeLabel(String(row[c.key] ?? "")) : cellValue(c, row[c.key]));
     const totalsRow = (cls, label, rows, keys) => tr(cls, cols.map((c, i) => h("td", { class: isNum(c.type) ? "num" : "" }, keys.includes(c.key) ? cellValue(c, sum(rows, c.key)) : i === 0 ? label : "")));
     if (!r.rows.length)

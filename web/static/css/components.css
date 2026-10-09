@@ -301,3 +301,41 @@ table.ws-stmt { width: calc(100% - 32px); margin: 8px 16px 16px; border-collapse
 .lbl-sheet { page: labels; }
 @page labels { size: A4 portrait; margin: 0; }
 .dlg input[type=checkbox], .dlg input[type=radio] { width: auto; min-height: 0; padding: 0; accent-color: var(--blue); }
+
+/* ---- value change previews (capital addition, revaluation / impairment) */
+.vp { margin-top: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); padding: 10px 14px; font-size: 13.5px; color: var(--ink-2); }
+.vp.err { border-color: var(--err); color: var(--err); background: var(--err-bg); }
+.vp-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.vp-row .k { color: var(--ink-2); } .vp-row .v { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+.vp-row b { color: var(--ink); }
+.vp-arrow { color: var(--ink-3); }
+.vp-note { margin-top: 6px; color: var(--ink-3); font-size: 12.5px; }
+
+/* ---- ledger entries */
+.lg-sum { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; padding: 8px 2px 10px; font-size: 13px; color: var(--ink-2); }
+.lg-sum b { color: var(--ink); font-variant-numeric: tabular-nums; } .lg-sum .muted { color: var(--ink-3); }
+.lg-more { display: flex; justify-content: center; padding: 12px; }
+.lg-empty { color: var(--ink-3); font-size: 13px; padding: 12px 14px !important; }
+.lg-je { padding: 6px 10px 10px; overflow-x: auto; }
+table.je { width: 100%; font-size: 12.5px; } table.je th, table.je td { padding: 5px 6px; } table.je tfoot td { font-weight: 600; border-top: 1px solid var(--line); }
+.lnk-btn { background: none; border: 0; padding: 0; color: var(--blue-t); cursor: pointer; font: inherit; text-decoration: underline; text-decoration-color: transparent; }
+.lnk-btn:hover { text-decoration-color: currentColor; }
+.fields.inline { display: inline-flex; gap: 8px; align-items: end; margin: 0; }
+.fields.inline > * { width: 150px; margin: 0; }
+.fields.inline label { font-size: 11.5px; }
+
+/* ---- the asset list FactBox */
+.ad .fb h4 a { color: inherit; }
+.ad-entries { display: flex; flex-direction: column; padding: 4px 6px 8px; }
+.ad-entry { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 8px; border: 0; border-radius: 6px; background: none; text-align: start; cursor: pointer; color: var(--ink); font-size: 13px; }
+.ad-entry:hover { background: var(--hover); }
+.ad-entry small { display: block; color: var(--ink-3); font-size: 11.5px; }
+.ad-entry .num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+.ad-all { padding: 6px 8px 2px; font-size: 13px; }
+
+/* ---- workspace statement: by group / country / branch */
+.ws-seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; margin-inline-start: auto; margin-inline-end: 12px; }
+.ws-seg-b { border: 0; background: var(--paper); color: var(--ink-2); padding: 4px 12px; font-size: 12.5px; cursor: pointer; }
+.ws-seg-b + .ws-seg-b { border-inline-start: 1px solid var(--line-2); }
+.ws-seg-b.on { background: var(--blue-xl); color: var(--blue-t); font-weight: 600; }
+.ws-seg-b:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }

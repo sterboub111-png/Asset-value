@@ -1,5 +1,5 @@
 import { api, invalidateLookups, lookups } from "../../core/api.js";
-import { t } from "../../core/i18n.js";
+import { getLang, t } from "../../core/i18n.js";
 import type { Col, Lookups, Rec } from "../../core/types.js";
 import { DataGrid, FieldDef, Form, nm, pill, clear, confirmDialog, fail, guard, h, icon, opts, page, ribbon, toast } from "../../ui/index.js";
 
@@ -11,6 +11,9 @@ const gl = (L: Lookups, type?: RegExp, keep: (number | null | undefined)[] = [])
 const active = { name: "IsActive", label: "Active", type: "checkbox" as const };
 
 let defaultCurrency = "";
+let lk: Lookups | null = null;   // the lookups of the page on screen, for country and branch names in the lists
+const countryName = (code: string) => { const c = lk?.countries.find((x) => x.code === code); return c ? (getLang() === "ar" ? c.nameAr : c.name) : code || ""; };
+const branchName = (id: number) => { const b = lk?.branches.find((x) => x.BranchID === id); return b ? `${b.BranchCode} — ${nm(b, "BranchName")}` : ""; };
 
 export const MASTERS: Record<string, MasterCfg> = {
   currencies: {
@@ -34,10 +37,23 @@ export const MASTERS: Record<string, MasterCfg> = {
       { name: "GainAccountID", label: "Gain on disposal account", type: "select", options: gl(L, undefined, [rec?.GainAccountID]) },
       { name: "LossAccountID", label: "Loss on disposal account", type: "select", options: gl(L, undefined, [rec?.LossAccountID]) }, active],
   },
+  branches: {
+    title: "Branches", entity: "branches", pk: "BranchID", defaults: { IsActive: true, CountryCode: "SA" },
+    cols: [{ key: "BranchCode", label: "Code" }, { key: "BranchName", label: "Name" }, { key: "BranchNameAr", label: "Name (Arabic)" },
+      { key: "CountryCode", label: "Country", render: (r) => countryName(r.CountryCode) }, { key: "City", label: "City" }, { key: "Region", label: "Region" },
+      { key: "IsActive", label: "Active", type: "bool" }],
+    fields: (L) => [{ name: "BranchCode", label: "Code", required: true, maxlength: 20 }, { name: "BranchName", label: "Name", required: true }, { name: "BranchNameAr", label: "Name (Arabic)" },
+      { name: "CountryCode", label: "Country", type: "select", required: true, search: true, options: L.countries.map((c) => ({ value: c.code, label: countryName(c.code) })) },
+      { name: "City", label: "City" }, { name: "Region", label: "Region", hint: "Optional grouping for reports, e.g. Central or Western region." }, active],
+  },
   locations: {
     title: "Locations", entity: "locations", pk: "LocationID", defaults: { IsActive: true },
-    cols: [{ key: "LocationCode", label: "Code" }, { key: "LocationName", label: "Name" }, { key: "LocationNameAr", label: "Name (Arabic)" }, { key: "IsActive", label: "Active", type: "bool" }],
-    fields: () => [{ name: "LocationCode", label: "Code", required: true }, { name: "LocationName", label: "Name", required: true }, { name: "LocationNameAr", label: "Name (Arabic)" }, active],
+    cols: [{ key: "LocationCode", label: "Code" }, { key: "LocationName", label: "Name" }, { key: "LocationNameAr", label: "Name (Arabic)" },
+      { key: "BranchID", label: "Branch", render: (r) => branchName(r.BranchID) }, { key: "IsActive", label: "Active", type: "bool" }],
+    fields: (L, rec) => [{ name: "LocationCode", label: "Code", required: true }, { name: "LocationName", label: "Name", required: true }, { name: "LocationNameAr", label: "Name (Arabic)" },
+      { name: "BranchID", label: "Branch", type: "select", search: true, required: L.branches.length > 0,
+        options: L.branches.filter((b) => b.IsActive || b.BranchID === rec?.BranchID).map((b) => ({ value: b.BranchID, label: `${b.BranchCode} — ${nm(b, "BranchName")} (${countryName(b.CountryCode)})` })),
+        hint: L.branches.length ? undefined : "Add branches first to organise locations by branch and country." }, active],
   },
   costcenters: {
     title: "Cost centers", entity: "costcenters", pk: "CostCenterID", defaults: { IsActive: true },
@@ -48,12 +64,12 @@ export const MASTERS: Record<string, MasterCfg> = {
     title: "Ledger accounts", entity: "glaccounts", pk: "GLAccountID", defaults: { IsActive: true },
     cols: [{ key: "AccountCode", label: "Account" }, { key: "AccountName", label: "Name" }, { key: "AccountNameAr", label: "Name (Arabic)" }, { key: "AccountType", label: "Type", render: (r) => t(r.AccountType || "") }, { key: "IsActive", label: "Active", type: "bool" }],
     fields: () => [{ name: "AccountCode", label: "Account", required: true }, { name: "AccountName", label: "Name", required: true }, { name: "AccountNameAr", label: "Name (Arabic)" },
-      { name: "AccountType", label: "Type", type: "select", options: ["FIXED ASSET", "ACCUMULATED DEPRECIATION", "EXPENSE", "OTHER INCOME", "OTHER EXPENSE", "CLEARING"].map((x) => ({ value: x, label: x })) }, active],
+      { name: "AccountType", label: "Type", type: "select", options: ["FIXED ASSET", "ACCUMULATED DEPRECIATION", "EXPENSE", "OTHER INCOME", "OTHER EXPENSE", "CLEARING", "EQUITY"].map((x) => ({ value: x, label: t(x) })) }, active],
   },
   methods: {
     title: "Depreciation methods", entity: "methods", pk: "MethodID", defaults: { IsActive: true },
     cols: [{ key: "MethodCode", label: "Code" }, { key: "MethodName", label: "Name" }, { key: "MethodNameAr", label: "Name (Arabic)" }, { key: "IsActive", label: "Active", type: "bool" }],
-    fields: () => [{ name: "MethodCode", label: "Code", required: true, hint: "SL = straight line (the only method that calculates; any other code = no depreciation)." },
+    fields: () => [{ name: "MethodCode", label: "Code", required: true, hint: "SL = straight line, DB = declining balance (switches to straight line when that gives more); any other code = no depreciation." },
       { name: "MethodName", label: "Name", required: true }, { name: "MethodNameAr", label: "Name (Arabic)" }, active],
   },
 };
@@ -62,12 +78,13 @@ export async function masterPage(root: HTMLElement, a: Args): Promise<void> {
   const cfg = MASTERS[a.args[0]];
   if (!cfg) { location.hash = "#/"; return; }
   let L = await lookups(true);
+  lk = L;
   defaultCurrency = L.settings.DefaultCurrency || "";
   const grid = new DataGrid({ columns: cfg.cols, rows: [], exportName: cfg.entity, limit: 1000, onOpen: (r) => edit(r) });
   let panel: HTMLElement | null = null;
   const holder = h("div", { class: "split-side" });
   const closePanel = () => { panel?.remove(); panel = null; };
-  const load = async () => { try { invalidateLookups(); grid.setRows(await api.get(`/api/master/${cfg.entity}`)); } catch (e) { fail(e); } };
+  const load = async () => { try { invalidateLookups(); grid.setRows(await api.get(`/api/master/${cfg.entity}`)); L = await lookups(true); lk = L; } catch (e) { fail(e); } };
 
   function edit(rec: Rec | null) {
     closePanel();
@@ -110,6 +127,10 @@ export async function parametersPage(root: HTMLElement, _a: Args): Promise<void>
     { name: "CompanyName", label: "Company name", wide: true },
     { name: "FiscalYearStartMonth", label: "Fiscal year start month", type: "select", required: true, options: Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: new Date(2000, i, 1).toLocaleString(t("en-US"), { month: "long" }) })) },
     { name: "DisposalClearingAccountID", label: "Disposal proceeds (clearing) account", type: "select", options: gl(L, undefined, [Number(s.DisposalClearingAccountID) || null]) },
+    { name: "ImpairmentAccountID", label: "Impairment loss account", type: "select", options: gl(L, undefined, [Number(s.ImpairmentAccountID) || null]),
+      hint: "Impairment losses and their reversals (IAS 36)." },
+    { name: "RevaluationSurplusAccountID", label: "Revaluation surplus account", type: "select", options: gl(L, undefined, [Number(s.RevaluationSurplusAccountID) || null]),
+      hint: "Equity: increases above the cost model (IAS 16)." },
     { name: "BackupFolder", label: "Backup folder", wide: true, hint: "Leave blank to use the 'backups' folder next to the application. A cloud or network folder is recommended." },
     { name: "AttachmentFolder", label: "Attachments folder", wide: true, hint: "Leave blank to use the 'attachments' folder next to the application." },
   ], s);

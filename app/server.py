@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import auth, db, scheduler, services as s
+from .services import branches
 from .api import routes
 from .api.router import ROUTES, Ctx
 
@@ -92,6 +93,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(403, {"error": "Forbidden"})   # a page on another site cannot set this header
         s.set_lang(self.headers.get("X-Lang", "en"))
         s.set_actor(None)
+        s.set_scope([])   # nothing in scope until the user is known (threads are reused between requests)
         public = (self.command, u.path) in (("POST", "/api/auth/login"), ("POST", "/api/auth/setup"), ("GET", "/api/auth/status"))
         token = self._session_token()
         con = db.connect()
@@ -101,6 +103,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(401, {"error": "Please sign in", "auth": "required"})
             if user:
                 s.set_actor(user["UserName"])
+                branches.apply_scope(con, user["UserID"], self.headers.get("X-Scope"))
                 # an account flagged "must change password" may only change it (or sign out)
                 if user["MustChangePassword"] and (self.command, u.path) not in (("POST", "/api/auth/password"), ("POST", "/api/auth/logout"), ("GET", "/api/auth/me"), ("GET", "/api/auth/status")):
                     return self._json(403, {"error": "You must change your password first", "auth": "password"})

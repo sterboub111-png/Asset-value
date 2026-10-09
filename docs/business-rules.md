@@ -15,8 +15,17 @@ These are the rules the server enforces (`app/services/*`). The user interface o
   Otherwise dispose or deactivate it.
 - Editing anything the depreciation depends on discards that asset's unposted (draft) lines.
 
+## Book value
+- `app/services/book.py` defines it once: cost = acquisition cost (net of VAT) + capital additions; net book value = cost − accumulated
+  depreciation (opening + posted) + revaluations − impairments. A date limits each part to what was recorded on or before it.
+
 ## Depreciation
 - Method `SL` (straight line), monthly: `(cost − residual) ÷ (life × 12)`; the first month is the depreciation-start month (full month).
+  After a capital addition or a revaluation / impairment: `(carrying amount − residual) ÷ months of life left` (IAS 16.50, IAS 36.63).
+- Method `DB` (declining balance, switching to straight line): a month's charge is `rate × carrying amount at the start of the fiscal
+  year ÷ 12`, or straight line over the life left when that is more, so the asset reaches its residual value at the end of its life. The rate
+  defaults to `200 ÷ life` (double declining) and must be between 0 and 100.
+- `monthly_charge` (`app/services/depreciation.py`) is the only implementation: the run, the forecast report and the previews call it.
 - The last month takes the exact remainder so rounding never leaves a stray cent or an extra month. Opening accumulated depreciation counts
   toward the depreciable amount.
 - Flow: **Propose** (calculated, not stored) → **Create lines** (stored as DRAFT) → **Post** (writes journal, marks POSTED).
@@ -28,10 +37,30 @@ These are the rules the server enforces (`app/services/*`). The user interface o
 
 ## Disposal
 - Needs: not already disposed, no open maintenance orders, no custody in progress, disposal date not before acquisition, period of the date open.
-- Depreciation must be posted up to the month before the disposal month (for `SL` assets that are not fully depreciated), and the date must be
+- Depreciation must be posted up to the month before the disposal month (for `SL` and `DB` assets that are not fully depreciated), and the date must be
   after the last posted depreciation. Draft lines of the asset are dropped.
 - Books: remove accumulated depreciation and cost, take proceeds to the clearing account, book gain or loss (see database.md).
   Group accounts (asset, accumulated depreciation, gain/loss) and the clearing account (when proceeds > 0) must be configured.
+
+## Capital additions, revaluation and impairment
+- Need the `assets.value` permission. The date must be after the last posted month of the asset, in an open period, not before the
+  acquisition, and not before an earlier addition or revaluation of the asset. Draft lines of the asset are dropped.
+- **Capital addition** (IAS 16.13): a positive amount added to the cost; no journal (bought through the purchase ledger, like the
+  acquisition). The useful life may be extended at the same time (it must stay longer than the time already in use).
+- **Revaluation / impairment** to a new carrying amount (≥ 0). A decrease uses the asset's revaluation surplus first, the rest is an
+  impairment loss: Dr revaluation surplus / Dr impairment loss, Cr accumulated depreciation and impairment. An increase first reverses
+  earlier impairment losses, the rest goes to the surplus: Dr accumulated depreciation and impairment, Cr impairment (reversal) / Cr
+  revaluation surplus. The accounts come from Fixed asset parameters. A new value below the residual value lowers the residual value.
+- Disposal removes the cost with additions and the net accumulated depreciation (accumulated − revaluations + impairments); the gain or
+  loss is proceeds less that net book value. The revaluation surplus stays in equity.
+
+## Countries, branches and scope
+- A branch has a country (ISO 3166 code) and optionally a city and a region; a location belongs to one branch (required once branches
+  exist); an asset's branch follows its location, so a transfer moves it between branches.
+- A user with branches assigned sees and changes only the assets of those branches (and their maintenance, custody, counts, ledger,
+  reports, workspace and depreciation runs); no branches = all branches. The branch picker narrows further to a country or a branch.
+- New assets and counts must be at a location in scope. Transfers may send an asset to any branch. Closing a count may bring an
+  asset of another branch found at the counted location.
 
 ## Periods
 - `generate_periods(fiscal_year)` creates twelve monthly periods from the fiscal year start month. Existing periods are kept.

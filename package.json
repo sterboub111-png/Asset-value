@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc -p .",
-    "test": "python -m tests.test_flow && python -m tests.test_auth && python -m tests.test_review && python -m tests.test_integrity && python -m tests.test_import && python -m tests.test_counts"
+    "test": "python3 -m tests.test_flow && python3 -m tests.test_auth && python3 -m tests.test_review && python3 -m tests.test_integrity && python3 -m tests.test_import && python3 -m tests.test_counts && python3 -m tests.test_valuation && python3 -m tests.test_scope"
   },
   "keywords": [],
   "author": "",

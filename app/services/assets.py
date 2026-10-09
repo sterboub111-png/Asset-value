@@ -6,8 +6,9 @@ import sqlite3
 from datetime import date
 from typing import Any
 
+from .book import ACCUM_SQL, ADDITIONS_SQL, VALUE_ADJ_SQL
 from .files import _remove_file
-from .common import ASSET_STATUSES, ApiError, _ctx, actor, audit, now, num, one, parse_date, r2, rows, to_int
+from .common import ASSET_STATUSES, ApiError, _ctx, actor, audit, in_scope, now, num, one, parse_date, r2, rows, scope_sql, to_int
 from .custody import list_custody
 from .maintenance import list_maintenance
 from .settings import get_settings
@@ -19,30 +20,33 @@ ASSET_FIELDS = ["AssetName", "AssetNameAr", "AssetDescription", "CategoryID", "A
                 "InvoiceNumber", "PurchaseOrderNumber", "SerialNumber", "ModelNumber", "Manufacturer",
                 "WarrantyExpiryDate", "Notes"]
 
-BOOK_SQL = """
+BOOK_SQL = f"""
 SELECT A.*, C.CategoryCode, C.CategoryName, C.CategoryNameAr, M.MethodCode, M.MethodName, M.MethodNameAr,
-       L.LocationName, L.LocationNameAr, L.LocationCode, CC.CostCenterName, CC.CostCenterNameAr, CC.CostCenterCode, SP.SupplierNameAr,
+       L.LocationName, L.LocationNameAr, L.LocationCode, L.BranchID, B.BranchCode, B.BranchName, B.BranchNameAr, B.CountryCode,
+       CC.CostCenterName, CC.CostCenterNameAr, CC.CostCenterCode, SP.SupplierNameAr,
        (SELECT E.EmployeeName FROM tbl_AssetCustody U JOIN tbl_Employees E ON E.EmployeeID=U.EmployeeID WHERE U.AssetID=A.AssetID AND U.Status='Issued') AS CustodianName,
        (SELECT E.EmployeeNameAr FROM tbl_AssetCustody U JOIN tbl_Employees E ON E.EmployeeID=U.EmployeeID WHERE U.AssetID=A.AssetID AND U.Status='Issued') AS CustodianNameAr,
-       COALESCE(A.OpeningAccumDep,0) + COALESCE((SELECT SUM(PeriodDepreciation) FROM tbl_Depreciation D
-            WHERE D.AssetID=A.AssetID AND D.PostingStatus='POSTED'),0) AS AccumDep
+       {ACCUM_SQL} AS AccumDep, {ADDITIONS_SQL} AS Additions, {VALUE_ADJ_SQL} AS ValueAdj
 FROM tbl_Assets A
 LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID
 LEFT JOIN tbl_DepreciationMethods M ON M.MethodID=A.MethodID
 LEFT JOIN tbl_Locations L ON L.LocationID=A.LocationID
+LEFT JOIN tbl_Branches B ON B.BranchID=L.BranchID
 LEFT JOIN tbl_CostCenters CC ON CC.CostCenterID=A.CostCenterID
 LEFT JOIN tbl_Suppliers SP ON SP.SupplierID=A.SupplierID
 """
 
 
 def _with_nbv(a: dict) -> dict:
-    a["AccumDep"] = r2(a["AccumDep"])
-    a["NBV"] = r2((a["AcquisitionCost"] or 0) - a["AccumDep"])
+    """Book values (services/book.py): cost with additions, accumulated depreciation, value adjustments, net book value."""
+    a["AccumDep"], a["Additions"], a["ValueAdj"] = r2(a["AccumDep"]), r2(a["Additions"]), r2(a["ValueAdj"])
+    a["Cost"] = r2((a["AcquisitionCost"] or 0) + a["Additions"])
+    a["NBV"] = r2(a["Cost"] - a["AccumDep"] + a["ValueAdj"])
     return a
 
 
 def list_assets(con, q: str = "", status: str = "", category: str = "") -> list[dict]:
-    sql, args = BOOK_SQL + " WHERE 1=1", []
+    sql, args = BOOK_SQL + " WHERE 1=1" + scope_sql("A"), []
     if status:
         sql += " AND A.AssetStatus=?"
         args.append(status)
@@ -56,10 +60,10 @@ def list_assets(con, q: str = "", status: str = "", category: str = "") -> list[
 
 
 def get_asset(con, asset_id: int) -> dict:
-    a = one(con, BOOK_SQL + " WHERE A.AssetID=?", (asset_id,), raw=True)
+    a = one(con, BOOK_SQL + " WHERE A.AssetID=?" + scope_sql("A"), (asset_id,), raw=True)
     if not a:
         raise ApiError("Asset not found", 404)
-    for k in ("CategoryName", "MethodName", "LocationName", "CostCenterName"):
+    for k in ("CategoryName", "MethodName", "LocationName", "CostCenterName", "BranchName"):
         if getattr(_ctx, "lang", "en") == "ar" and a.get(k + "Ar"):
             a[k] = a[k + "Ar"]
     _with_nbv(a)
@@ -139,9 +143,16 @@ def _clean_asset(con, data: dict, existing: dict | None) -> dict:
     if life is None:
         life = cat["UsefulLifeYears"]
     v["UsefulLifeYears"] = life
-    rate = num(data.get("DepreciationRate"), "Depreciation rate", None, 0)
-    v["DepreciationRate"] = rate if rate is not None else (round(100 / life, 4) if life else cat["DepreciationRate"])
     v["MethodID"] = to_int(data.get("MethodID"), "MethodID") or cat["MethodID"]
+    method = one(con, "SELECT MethodCode FROM tbl_DepreciationMethods WHERE MethodID=?", (v["MethodID"],), raw=True)
+    if v["MethodID"] and not method:
+        raise ApiError("Depreciation method not found")
+    declining = bool(method and method["MethodCode"] == "DB")
+    rate = num(data.get("DepreciationRate"), "Depreciation rate", None, 0)
+    if declining and rate is not None and not 0 < rate <= 100:
+        raise ApiError("The declining balance rate must be between 0 and 100")
+    # declining balance defaults to double the straight-line rate (double declining balance)
+    v["DepreciationRate"] = rate if rate is not None else (round((200 if declining else 100) / life, 4) if life else cat["DepreciationRate"])
     v["OpeningNBV"] = v["AcquisitionCost"] - v["OpeningAccumDep"]
     for f in ("LocationID", "CostCenterID"):
         v[f] = to_int(data.get(f), f) or None
@@ -163,6 +174,8 @@ def _clean_asset(con, data: dict, existing: dict | None) -> dict:
 def save_asset(con, data: dict, asset_id: int | None = None) -> dict:
     if asset_id is None:
         v = _clean_asset(con, data, None)
+        if not in_scope(con, v["LocationID"]):
+            raise ApiError("Choose a location in the branches you work in")
         code = next_asset_code(con, v["CategoryID"])
         try:
             cur = con.execute(
@@ -179,7 +192,7 @@ def save_asset(con, data: dict, asset_id: int | None = None) -> dict:
                      v["LocationID"], v["CostCenterID"], "Asset acquired", now(), actor()))
         audit(con, "CREATE", "tbl_Assets", asset_id, code)
     else:
-        cur_a = one(con, "SELECT * FROM tbl_Assets WHERE AssetID=?", (asset_id,))
+        cur_a = one(con, "SELECT * FROM tbl_Assets A WHERE AssetID=?" + scope_sql("A"), (asset_id,))
         if not cur_a:
             raise ApiError("Asset not found", 404)
         if cur_a["AssetStatus"] == "Disposed":

@@ -5,7 +5,8 @@ import re
 import sqlite3
 from pathlib import Path
 
-from .common import ASSET_STATUSES, ApiError, actor, audit, num, one, rows
+from .branches import check_country, countries
+from .common import ASSET_STATUSES, ApiError, actor, audit, num, one, rows, to_int
 from .maintenance import MAINT_PRIORITIES, MAINT_STATUSES, MAINT_TYPES
 from .suppliers import SUPPLIER_TYPES
 
@@ -20,8 +21,11 @@ MASTERS: dict[str, dict] = {
                                "AssetAccountID", "AccumDepAccountID", "DepExpenseAccountID", "GainAccountID",
                                "LossAccountID", "IsActive"],
                        used_by=[("tbl_Assets", "CategoryID")], order="CategoryCode"),
+    "branches": dict(table="tbl_Branches", pk="BranchID", code="BranchCode", name="BranchName",
+                     fields=["BranchCode", "BranchName", "BranchNameAr", "CountryCode", "City", "Region", "IsActive"],
+                     used_by=[("tbl_Locations", "BranchID"), ("tbl_UserBranches", "BranchID")], order="CountryCode, BranchCode"),
     "locations": dict(table="tbl_Locations", pk="LocationID", code="LocationCode", name="LocationName",
-                      fields=["LocationCode", "LocationName", "LocationNameAr", "IsActive"],
+                      fields=["LocationCode", "LocationName", "LocationNameAr", "BranchID", "IsActive"],
                       used_by=[("tbl_Assets", "LocationID"), ("tbl_AssetTransactions", "FromLocationID"), ("tbl_AssetTransactions", "ToLocationID")], order="LocationCode"),
     "costcenters": dict(table="tbl_CostCenters", pk="CostCenterID", code="CostCenterCode", name="CostCenterName",
                         fields=["CostCenterCode", "CostCenterName", "CostCenterNameAr", "IsActive"],
@@ -77,6 +81,14 @@ def master_save(con, name: str, data: dict, rec_id: int | None = None) -> dict:
             cur = one(con, "SELECT CurrencyCode FROM tbl_Currencies WHERE CurrencyID=?", (rec_id,), raw=True)
             if cur and cur["CurrencyCode"] == get_settings(con).get("DefaultCurrency"):
                 raise ApiError("The default currency cannot be made inactive")
+    if name == "branches" and ("CountryCode" in vals or rec_id is None):
+        vals["CountryCode"] = check_country(vals.get("CountryCode"))
+    if name == "locations" and ("BranchID" in vals or rec_id is None):
+        vals["BranchID"] = to_int(vals.get("BranchID"), "Branch") or None
+        if vals["BranchID"] and not one(con, "SELECT 1 x FROM tbl_Branches WHERE BranchID=?", (vals["BranchID"],)):
+            raise ApiError("Branch not found")
+        if not vals["BranchID"] and one(con, "SELECT 1 x FROM tbl_Branches LIMIT 1"):
+            raise ApiError("Choose the branch of this location")
     if name == "categories":
         if vals.get("UsefulLifeYears") not in (None, ""):
             life = num(vals["UsefulLifeYears"], "Useful life", None, 0)
@@ -168,6 +180,8 @@ def lookups(con) -> dict:
     return {
         "categories": master_list(con, "categories"),
         "locations": master_list(con, "locations"),
+        "branches": master_list(con, "branches"),
+        "countries": countries(),
         "costcenters": master_list(con, "costcenters"),
         "glaccounts": master_list(con, "glaccounts"),
         "methods": master_list(con, "methods"),

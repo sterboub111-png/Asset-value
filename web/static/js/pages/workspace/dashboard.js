@@ -92,12 +92,47 @@ export async function dashboardPage(root) {
     const cycle = h("ol", { class: "ws-steps" }, p ? step(cyc.drafts ? "done" : "now", t("Create the proposal for {0}", p.PeriodName), cyc.drafts ? t("{0} line(s) proposed", cyc.drafts) : t("Calculates the month's depreciation"), `#/depreciation?period=${p.PeriodID}`, "depreciation.run")
         : step("done", t("Depreciation is up to date"), t("Every open period is posted")), p ? step(cyc.drafts ? "now" : "todo", t("Review and post"), t("Writes the journal: expense / accumulated depreciation"), `#/depreciation?period=${p.PeriodID}`, "depreciation.post") : null, step(cyc.closable.length ? "now" : "done", t("Close posted periods"), cyc.closable.length ? cyc.closable.map((x) => x.PeriodName).join(", ") : t("Nothing to close"), "#/periods", "periods.manage"));
     const curP = d.current_period;
-    // ---- the book value as a statement: by group, with the total ruled off
+    // ---- the book value as a statement: by group, country or branch, with the total ruled off
     const money = (v) => h("td", { class: "num" }, fmtMoney(v));
-    const statement = h("table", { class: "ws-stmt" }, h("thead", null, h("tr", null, h("th", null, t("Fixed asset group")), h("th", { class: "num" }, t("Assets")), h("th", { class: "num" }, t("Cost")), h("th", { class: "num" }, t("Accum. depreciation")), h("th", { class: "num" }, t("Net book value")))), h("tbody", null, ...d.by_category.map((c) => h("tr", null, h("td", null, h("a", { href: `#/assets?category=${c.id}` }, c.name)), h("td", { class: "num" }, fmtInt(c.count)), money(c.cost), money(c.cost - c.nbv), money(c.nbv)))), h("tfoot", null, h("tr", null, h("td", null, t("Total")), h("td", { class: "num" }, fmtInt(d.asset_count)), money(d.cost), money(d.accum_dep), money(d.nbv))));
+    const LK = await lookups().catch(() => null);
+    const country = (code) => { const c = LK?.countries.find((x) => x.code === code); return c ? (getLang() === "ar" ? c.nameAr : c.name) : code; };
+    const adjusted = Math.abs(d.value_adj || 0) > 0.004;
+    const views = {
+        group: { label: "By group", head: "Fixed asset group", rows: d.by_category, cell: (c) => h("a", { href: `#/assets?category=${c.id}` }, c.name) },
+        ...(d.by_branch.length ? {
+            country: { label: "By country", head: "Country", rows: d.by_country, cell: (c) => h("a", { href: `#/reports/asset-summary?group_by=branch&country=${c.id}` }, country(c.id)) },
+            branch: { label: "By branch", head: "Branch", rows: d.by_branch, cell: (c) => h("a", { href: `#/reports/asset-register?branch=${c.id}` }, `${c.code} · ${c.name}`) },
+        } : {}),
+    };
+    const VKEY = "usool.ws.statement";
+    let view = (() => { try {
+        return localStorage.getItem(VKEY) || "group";
+    }
+    catch {
+        return "group";
+    } })();
+    if (!views[view])
+        view = "group";
+    const statement = h("div");
+    const switcher = Object.keys(views).length > 1 ? h("div", { class: "ws-seg", role: "tablist" }) : null;
+    const drawStatement = () => {
+        const v = views[view];
+        clear(statement);
+        statement.append(h("table", { class: "ws-stmt" }, h("thead", null, h("tr", null, h("th", null, t(v.head)), h("th", { class: "num" }, t("Assets")), h("th", { class: "num" }, t("Cost")), h("th", { class: "num" }, t(adjusted ? "Accum. dep. & impairment" : "Accum. depreciation")), h("th", { class: "num" }, t("Net book value")))), h("tbody", null, ...v.rows.map((c) => h("tr", null, h("td", null, v.cell(c)), h("td", { class: "num" }, fmtInt(c.count)), money(c.cost), money(c.cost - c.nbv), money(c.nbv)))), h("tfoot", null, h("tr", null, h("td", null, t("Total")), h("td", { class: "num" }, fmtInt(v.rows.reduce((n, c) => n + c.count, 0))), money(v.rows.reduce((n, c) => n + c.cost, 0)), money(v.rows.reduce((n, c) => n + c.cost - c.nbv, 0)), money(v.rows.reduce((n, c) => n + c.nbv, 0))))));
+        if (switcher) {
+            clear(switcher);
+            for (const [k, x] of Object.entries(views))
+                switcher.append(h("button", { class: `ws-seg-b ${k === view ? "on" : ""}`, type: "button", role: "tab", "aria-selected": String(k === view),
+                    onclick: () => { view = k; try {
+                        localStorage.setItem(VKEY, k);
+                    }
+                    catch { /* ignore */ } drawStatement(); } }, t(x.label)));
+        }
+    };
+    drawStatement();
     const ytd = d.fiscal_year ? h("div", { class: "ws-ytd" }, h("span", null, t("Depreciation posted in {0}", d.fiscal_year), " ", h("b", null, `${fmtMoney(d.dep_ytd)} ${cur}`)), d.last_posted ? h("span", null, t("Last period posted"), " ", h("b", null, d.last_posted.PeriodName)) : null) : null;
     const card = (title, body, more) => h("section", { class: "card ws-card" }, h("h3", null, h("span", null, title), more ? h("a", { href: more[1], class: "ws-more" }, more[0]) : null), h("div", { class: "card-body" }, body));
-    const pg = page({ title: t("Home"), subtitle: t("Fixed assets") }, h("div", { class: "ws-top" }, head(curP ? h("span", { class: "ws-period" }, ` · ${t("Current period")} ${curP.PeriodName} `, pill(curP.PeriodStatus)) : null), actions), tiles, h("div", { class: "ws-grid" }, h("section", { class: "card ws-card ws-center" }, strip, panel), can("depreciation.view") ? h("div", { class: "ws-side" }, card(t("Month-end"), cycle, [t("Periods"), "#/periods"])) : null), d.by_category.length ? h("section", { class: "card ws-card ws-statement" }, h("h3", null, h("span", null, t("Fixed assets by group")), can("reports.view") ? h("a", { href: "#/reports/asset-register", class: "ws-more" }, t("Asset register")) : null), ytd, statement) : null);
+    const pg = page({ title: t("Home"), subtitle: t("Fixed assets") }, h("div", { class: "ws-top" }, head(curP ? h("span", { class: "ws-period" }, ` · ${t("Current period")} ${curP.PeriodName} `, pill(curP.PeriodStatus)) : null), actions), tiles, h("div", { class: "ws-grid" }, h("section", { class: "card ws-card ws-center" }, strip, panel), can("depreciation.view") ? h("div", { class: "ws-side" }, card(t("Month-end"), cycle, [t("Periods"), "#/periods"])) : null), d.by_category.length ? h("section", { class: "card ws-card ws-statement" }, h("h3", null, h("span", null, t("Fixed assets")), switcher, can("reports.view") ? h("a", { href: "#/reports/asset-register", class: "ws-more" }, t("Asset register")) : null), ytd, statement) : null);
     clear(root);
     root.append(pg.el);
 }
