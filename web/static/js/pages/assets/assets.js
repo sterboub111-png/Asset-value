@@ -45,6 +45,7 @@ export async function assetsListPage(root, a) {
     const rb = ribbon([[
             { perm: "assets.edit", label: t("New"), icon: "plus", primary: true, onClick: () => (location.hash = "#/assets/new") },
             { label: t("Edit"), icon: "edit", onClick: open },
+            { perm: "assets.edit", label: t("Import from Excel"), icon: "download", onClick: () => (location.hash = "#/assets/import") },
         ], [{ label: t("Refresh"), icon: "refresh", onClick: load }]], [t("Fixed assets"), t("View")]);
     const pg = page({ title: t("All fixed assets"), subtitle: t("Fixed assets"), ribbon: rb.el }, grid.el);
     clear(root);

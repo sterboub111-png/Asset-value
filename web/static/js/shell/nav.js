@@ -68,6 +68,7 @@ const remember = (href, open) => {
 function newMenu() {
     const items = [
         ["New fixed asset", "assets.edit", "#/assets/new"],
+        ["Import fixed assets from Excel", "assets.edit", "#/assets/import"],
         ["New maintenance order", "maintenance.edit", "#/maintenance/new"],
         ["Issue to employee", "custody.manage", () => void lookups().then((L) => issueDialog(L, {}, (c) => (location.hash = `#/custody/${c.CustodyID}`)))],
         ["New supplier", "contacts.edit", "#/suppliers/new"],

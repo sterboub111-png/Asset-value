@@ -24,9 +24,12 @@ imported once from `Gooya asset.accdb`.
 - Settings > Users / Roles and permissions manage accounts; roles hold the permissions (checked on the server for every request).
 - Changing state (POST/PUT/DELETE) requires the `X-Requested-With: GooyaAsset` header, which the app sends itself.
 
+## Import from Excel
+- Fixed assets > Import from Excel (`#/assets/import`): download the template (Arabic or English headers, a Lists sheet with valid groups, locations, cost centers and suppliers), choose an .xlsx or .csv file, review every row (checked with the asset form's rules), then import the ready rows. Read with the standard library only (`app/services/importer.py`).
+
 ## Tests and tools
 - `python -m tests.test_flow` business rules, `python -m tests.test_auth` sign-in and permissions, `python -m tests.test_review` regression tests for the review fixes,
-  `python -m tests.test_integrity` the data checks (`npm test` runs all four). Every suite builds its own clean database from `data/access_export.json`; none reads `data/gooya_asset.db`.
+  `python -m tests.test_integrity` the data checks, `python -m tests.test_import` import from Excel (`npm test` runs all five). Every suite builds its own clean database from `data/access_export.json`; none reads `data/gooya_asset.db`.
 - **Data checks** (Inquiries > Data checks, `GET /api/integrity`, `app/services/integrity.py`): the arithmetic the books must satisfy, recalculated from the tables - depreciation lines, journal balance, disposals, VAT, periods, and reports tied to the books.
 - `python tools/reset_test_data.py --yes` removes test data safely; `python tools/restore_backup.py <zip>` restores a backup.
 - `node node_modules/typescript/bin/tsc -p .` builds the front end (strict, unused code is an error).

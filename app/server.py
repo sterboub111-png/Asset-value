@@ -116,6 +116,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._download(u.path)
             if u.path.startswith("/api/backups/") and u.path.endswith("/download") and self.command == "GET":
                 return self._download_backup(u.path)
+            if u.path == "/api/assets/import-template" and self.command == "GET":
+                from .services import importer
+                lang = "ar" if self.headers.get("X-Lang") == "ar" or parse_qs(u.query).get("lang") == ["ar"] else "en"
+                return self._send(200, importer.template(con, lang), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  {"Content-Disposition": "attachment; filename=\"usool-assets-import.xlsx\""})
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:

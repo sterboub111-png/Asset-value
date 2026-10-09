@@ -4,6 +4,7 @@ from __future__ import annotations
 from urllib.parse import unquote
 
 from ... import auth, services as s
+from ...services import importer
 
 from ..router import route
 
@@ -22,6 +23,17 @@ def _asset_out(c, data):
 
 @route("GET", "/api/assets")
 def _al(c): return _asset_out(c, s.list_assets(c.con, c.q("q"), c.q("status"), c.q("category")))
+
+@route("POST", "/api/assets/import")
+def _aimp(c):
+    """?dry=1 previews the file row by row; without it the ready rows are created (?skip=1 leaves the rows with errors out)."""
+    name = unquote(c.headers.get("X-File-Name", "assets.xlsx"))
+    if c.q("dry") == "1":
+        p = importer.preview(c.con, name, c.raw)
+        for r in p["rows"]:
+            r.pop("data", None)
+        return p
+    return importer.run_import(c.con, name, c.raw, c.q("skip") == "1")
 
 @route("GET", "/api/assets/next-code")
 def _anc(c): return {"code": s.next_asset_code(c.con, c.q("category"))}

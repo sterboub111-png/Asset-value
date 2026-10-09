@@ -240,3 +240,19 @@ table.ws-stmt { width: calc(100% - 32px); margin: 8px 16px 16px; border-collapse
 .ws-stmt .num { text-align: end; } [dir=rtl] .ws-stmt .num { direction: ltr; text-align: left; }
 .ws-stmt tfoot td { font-weight: 700; border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); }
 .ws-stmt tbody tr:hover td { background: var(--hover); }
+
+/* ---- import from Excel: three numbered steps */
+.imp { display: flex; flex-direction: column; gap: 14px; max-width: 1200px; }
+.imp-step { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; }
+.imp-n { width: 30px; height: 30px; border-radius: 50%; background: var(--blue-xl); color: var(--blue-t); display: grid; place-items: center; font-weight: 700; }
+.imp-b h3 { margin: 4px 0 2px; font-size: 15px; } .imp-b > p { margin: 0 0 10px; color: var(--ink-2); font-size: 13px; }
+.imp-b .btn { display: inline-flex; text-decoration: none; }
+.imp-drop { display: flex; flex-direction: column; gap: 2px; align-items: center; padding: 22px; border-radius: 8px; }
+.imp-drop b { color: var(--blue-t); } .imp-drop span { font-size: 12.5px; }
+.imp-sum { display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: baseline; margin-bottom: 10px; font-size: 13.5px; color: var(--ink-2); }
+.imp-sum .ok { color: var(--ok); font-weight: 600; } .imp-sum .err { color: var(--err); font-weight: 600; } .imp-sum b { color: var(--ink); }
+.imp-tools { margin-bottom: 8px; }
+.imp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; }
+.imp-actions a.btn { text-decoration: none; }
+.imp-skip { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; } .imp-skip input { accent-color: var(--blue); }
+.imp-done { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 4px 0 6px; font-size: 13px; }
