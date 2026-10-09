@@ -1,16 +1,15 @@
 /** Entry point: boots the app, shows sign-in or the shell, and renders the page for the current hash. */
 import { api, hooks, lookups } from "./core/api.js";
 import { applyLang, setLang, t } from "./core/i18n.js";
-import { can, getMe, getTheme, setMe, setTheme } from "./core/session.js";
+import { applyTheme, can, getMe, setMe, setTheme } from "./core/session.js";
 import { showLogin } from "./pages/auth/login.js";
-import { groupSlug } from "./pages/reports/reports.js";
 import { initKeyboard } from "./shell/keyboard.js";
 import { forcePasswordChange, signOut, signingOut } from "./shell/account.js";
-import { buildNav, loadReportGroups, markActive, narrow, railKey, reportGroups } from "./shell/nav.js";
+import { buildNav, loadReportGroups, markActive, narrow, railKey } from "./shell/nav.js";
 import { ROUTES, permFor } from "./shell/routes.js";
 import { buildTopbar } from "./shell/topbar.js";
 import { clear, closeAllDialogs, fail, h, icon } from "./ui/index.js";
-document.documentElement.dataset.theme = getTheme();
+applyTheme();
 let mainEl;
 let crumbEl;
 let seq = 0;
@@ -31,10 +30,7 @@ async function render() {
         const m = path.match(r.re);
         if (!m)
             continue;
-        const repId = path.startsWith("reports/") && !path.startsWith("reports/g/") ? path.slice(8) : "";
-        const repGroup = repId ? reportGroups.find((g) => g.ids.includes(repId)) : undefined;
-        const navHref = path.startsWith("reports/g/") ? `#/${path}` : repGroup ? `#/reports/g/${groupSlug(repGroup.group)}` : r.nav;
-        markActive(navHref);
+        markActive(r.nav);
         crumbEl.textContent = t(r.crumb);
         clear(mainEl);
         mainEl.scrollTop = 0;
@@ -78,7 +74,7 @@ async function startSession(me) {
     setMe(me);
     if (me.Language === "ar" || me.Language === "en")
         setLang(me.Language); // personal preferences
-    if (me.Theme === "light" || me.Theme === "dark")
+    if (me.Theme === "light" || me.Theme === "dark" || me.Theme === "system")
         setTheme(me.Theme);
     applyLang();
     const app = document.getElementById("app");

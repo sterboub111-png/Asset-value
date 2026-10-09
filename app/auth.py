@@ -198,7 +198,7 @@ def _clean_user(con, data: dict, uid: int | None) -> dict:
     if not one(con, "SELECT 1 x FROM tbl_Roles WHERE RoleID=?", (role_id,), raw=True):
         raise ApiError("Role is required")
     lang = data.get("Language") if data.get("Language") in ("en", "ar") else None
-    theme = data.get("Theme") if data.get("Theme") in ("light", "dark") else None
+    theme = data.get("Theme") if data.get("Theme") in ("light", "dark", "system") else None
     return {"UserName": name, "FullName": full, "FullNameAr": (data.get("FullNameAr") or "").strip() or None, "Email": email,
             "Phone": (data.get("Phone") or "").strip() or None, "RoleID": role_id, "Language": lang, "Theme": theme}
 

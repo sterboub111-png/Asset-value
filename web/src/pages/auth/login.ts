@@ -1,6 +1,6 @@
 import { api } from "../../core/api.js";
 import { getLang, setLang, t } from "../../core/i18n.js";
-import { Me, getTheme, initials, setTheme } from "../../core/session.js";
+import { Me, initials, nextTheme, setTheme, themeIcon, themeLabel } from "../../core/session.js";
 import { clear, h, icon } from "../../ui/index.js";
 
 const LAST = "gooya.lastUser";
@@ -114,7 +114,8 @@ export function showLogin(app: HTMLElement, needsSetup: boolean, onDone: (me: Me
 
   // page chrome: language and theme, a small clock, footer
   const langBtn = h("button", { class: "login-tool", type: "button", onclick: () => { setLang(getLang() === "ar" ? "en" : "ar"); rerender(); } }, icon("globe"), getLang() === "ar" ? "English" : "العربية");
-  const themeBtn = h("button", { class: "login-tool", type: "button", "aria-label": t("Dark mode"), title: t("Dark mode"), onclick: () => { setTheme(getTheme() === "dark" ? "light" : "dark"); themeBtn.replaceChildren(icon(getTheme() === "dark" ? "sun" : "moon")); } }, icon(getTheme() === "dark" ? "sun" : "moon"));
+  const themeBtn = h("button", { class: "login-tool", type: "button", "aria-label": t(themeLabel()), title: t(themeLabel()), onclick: () => {
+    setTheme(nextTheme()); themeBtn.replaceChildren(icon(themeIcon())); themeBtn.title = t(themeLabel()); } }, icon(themeIcon()));
   const clock = h("div", { class: "login-clock" }, h("b", null), h("span", null));
   const tick = () => {
     const d = new Date(); const loc = getLang() === "ar" ? "ar-SA-u-nu-latn" : "en-GB";

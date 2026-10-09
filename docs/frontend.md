@@ -15,12 +15,13 @@ Build: `node node_modules/typescript/bin/tsc -p .` (`Usool.bat` does not build; 
 | `core/session.ts` | `getMe/setMe`, `can(permission)`, theme, initials and name helpers |
 | `core/types.ts` | `Rec`, `Col`, `Lookups` |
 | `shell/routes.ts` | `ROUTES` (regex → page function, breadcrumb), `NAV` tree, `permFor(href)` |
-| `shell/nav.ts` | navigation pane: sections, live filter, report groups, **icon rail** |
+| `shell/nav.ts` | navigation pane (QuickBooks-style): a **+ New** menu, a few accounting tasks (`NAV` in `routes.ts`) that open to show their pages, Settings at the foot, and the **icon rail** with flyouts |
+| `shell/search.ts` | **search everything** in the top bar (`/` or `Ctrl+K`): pages and actions, assets, suppliers, employees and reports, grouped, permission-aware, Arabic-aware |
 | `shell/topbar.ts` | top bar: nav toggle, brand, breadcrumb, asset search, language, backup, theme, account menu |
 | `shell/account.ts` | account menu, sign-out, forced password change |
 | `ui/` | the UI kit (below); `ui/index.ts` re-exports it, pages import from `../../ui/index.js` |
 | `pages/settings/settings.ts` | Settings area: a side list of settings grouped as Personal / Company / Fixed asset setup / Accounting / Administration (`SETTINGS_GROUPS`, `SETTINGS_SECTIONS` with permissions) and the chosen setting on the right; a bar above it has **Back** and the path (Settings / Area / Setting) |
-| `pages/<feature>/` | one file per screen family: `workspace/dashboard`, `assets/assets`, `depreciation/depreciation`, `maintenance/maintenance`, `contacts/{suppliers,employees,custody}`, `reports/{reports,dashboard}` (dashboard = pinned charts, `#/charts`), `settings/{settings,setup,users,backup,account}`, `auth/login` |
+| `pages/<feature>/` | one file per screen family: `workspace/dashboard`, `assets/assets`, `depreciation/depreciation`, `maintenance/maintenance`, `contacts/{suppliers,employees,custody}`, `reports/{reports,dashboard}` (reports center with favourites and search, report periods presets, centered accounting heading; dashboard = pinned charts, `#/charts`), `settings/{settings,setup,users,backup,account}`, `auth/login` |
 
 ### UI kit (`ui/`)
 
@@ -73,8 +74,9 @@ column in Arabic mode.
 `settings` (split views, settings list and path bar) → `dark` (theme overrides via `:root[data-theme="dark"]`) → `documents` (handover form, report
 viewer, print) → `analysis` (report parameters bar, analysis mode) → `account` (menu, roles editor, no-access) → `login` → `nav-rail`.
 
-- Colours, spacing and shadows are CSS variables in `base.css`: a calm classic-finance palette (warm paper `--bg/--paper`, ink-slate header `--hdr`,
-  steel-blue accent `--blue`, muted ledger green / red), Dynamics-style layout (Segoe UI, ribbon, fast tabs). Destructive ribbon commands
-  (`danger`) are red and set apart.
+- Colours, spacing and shadows are CSS variables in `base.css`: a white, classic-finance theme (white surfaces, ink-navy text, steel-blue accent,
+  muted ledger green / red). `dark.css` is a warm charcoal theme in the manner of Claude Code. Appearance is **Light / Dark / Automatic**
+  (`core/session.ts`: `system` follows the operating system and changes with it). Every text token meets WCAG AA on its surfaces.
+  One face everywhere, `--font` (Segoe UI first), including reports and print. Destructive ribbon commands (`danger`) are red and set apart.
 - RTL uses logical properties (`inset-inline-*`, `padding-inline-*`, `border-inline-*`); numbers stay left-to-right through a dedicated rule.
 - Print styles hide the chrome and lay out reports and forms on paper (A4).

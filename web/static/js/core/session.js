@@ -10,13 +10,29 @@ export const initials = (name) => {
     const parts = name.trim().split(/\s+/).filter(Boolean);
     return ((parts[0]?.[0] || "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 };
-export function getTheme() { try {
-    return localStorage.getItem("gooya.theme") === "dark" ? "dark" : "light";
+const THEMES = ["light", "dark", "system"];
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+export function getTheme() {
+    try {
+        const v = localStorage.getItem("gooya.theme");
+        return THEMES.includes(v) ? v : "system";
+    }
+    catch {
+        return "system";
+    }
 }
-catch {
-    return "light";
-} }
-export function setTheme(v) { document.documentElement.dataset.theme = v; try {
-    localStorage.setItem("gooya.theme", v);
+export const resolvedTheme = (p = getTheme()) => (p === "system" ? (darkQuery.matches ? "dark" : "light") : p);
+export function applyTheme() { document.documentElement.dataset.theme = resolvedTheme(); }
+export function setTheme(v) {
+    try {
+        localStorage.setItem("gooya.theme", THEMES.includes(v) ? v : "system");
+    }
+    catch { /* ignore */ }
+    applyTheme();
 }
-catch { /* ignore */ } }
+/** Light -> dark -> system -> light (the top-bar and sign-in buttons). */
+export const nextTheme = () => THEMES[(THEMES.indexOf(getTheme()) + 1) % THEMES.length];
+export const themeIcon = (p = getTheme()) => (p === "light" ? "sun" : p === "dark" ? "moon" : "monitor");
+export const themeLabel = (p = getTheme()) => (p === "light" ? "Light" : p === "dark" ? "Dark" : "Automatic (system)");
+darkQuery.addEventListener("change", () => { if (getTheme() === "system")
+    applyTheme(); });

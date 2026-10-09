@@ -15,7 +15,7 @@ export async function accountPage(root: HTMLElement, _a: Args, onChanged: () => 
   ], { ...me, RoleName: roleTitle(me) });
   const prefs = new Form([
     { name: "Language", label: "Language", type: "select", options: [{ value: "en", label: "English" }, { value: "ar", label: "العربية" }] },
-    { name: "Theme", label: "Appearance", type: "select", options: [{ value: "light", label: t("Light") }, { value: "dark", label: t("Dark") }] },
+    { name: "Theme", label: "Appearance", type: "select", options: [{ value: "system", label: t("Automatic (system)") }, { value: "light", label: t("Light") }, { value: "dark", label: t("Dark") }] },
   ], { Language: me.Language || getLang(), Theme: me.Theme || getTheme() });
   const pw = new Form([
     { name: "Current", label: "Current password", type: "password", required: true },

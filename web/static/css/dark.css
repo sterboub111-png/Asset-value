@@ -1,13 +1,19 @@
 /* Dark theme overrides. */
-/* ---- dark theme: the same slate-and-paper palette at night */
+/* ---- dark theme: warm charcoal neutrals (as in Claude Code), not blue-black; the same accent, stepped for the dark surface */
 :root[data-theme="dark"] {
-  --bg: #1c1f22; --paper: #24282c; --head: #2b3035; --bg2: #2f3439; --ink: #eceae5; --ink-2: #c3c0b9; --ink-3: #9ea2a5;
-  --line: #3a4046; --line-2: #555c63; --hover: #2f3439; --sel: #24405a; --blue: #4f86ad; --blue-xl: #1d2b36; --blue-l: #23394a; --blue-t: #8fb8d6; --blue-h: #5b93bb;
-  --ok: #8fbf7f; --ok-bg: #22331f; --warn: #e3bf63; --warn-bg: #3a3118; --warn-line: #b8913f; --err: #e08a84; --err-bg: #46221f; --info-bg: #1d2b36;
-  --hdr: #151d24; --hdr-2: #22303b; --gold: #c9a96b; --bar2: #34536b; --shadow: 0 6px 16px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.35);
+  --top: #1f1e1d; --side: #1f1e1d; --hdr: #1f1e1d; --hdr-2: #34332f;
+  --bg: #262624; --paper: #30302e; --head: #2b2b29; --bg2: #353532; --hover: #3a3a37; --sel: #33404d;
+  --ink: #f0eee6; --ink-2: #c2c0b6; --ink-3: #aeaca2; --line: #3e3d39; --line-2: #55534d;
+  --blue: #6f9fc8; --blue-h: #82afd4; --blue-t: #9cc3e4; --blue-l: #34465a; --blue-xl: #2f3a44;
+  --ok: #9cc98d; --ok-bg: #2c3a29; --warn: #e6c26b; --warn-bg: #3f3720; --warn-line: #b8913f; --err: #ec968e; --err-bg: #4a2a27; --info-bg: #2f3a44;
+  --gold: #c9a96b; --bar2: #46596a; --shadow: 0 8px 24px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.35);
   color-scheme: dark;
 }
-:root[data-theme="dark"] .toast { background: #3a434b; }
+:root[data-theme="dark"] .toast { background: #3a3a37; }
+:root[data-theme="dark"] .btn.primary, :root[data-theme="dark"] .rb.primary { color: #1f1e1d; }
+:root[data-theme="dark"] .rb.primary svg { color: #1f1e1d; }
 :root[data-theme="dark"] .paper .rh h2, :root[data-theme="dark"] table.rpt tr.grp td { color: var(--ink); }
-:root[data-theme="dark"] .paper .rh { border-bottom-color: var(--blue); }
+:root[data-theme="dark"] .paper .rh { border-bottom-color: var(--line-2); }
 :root[data-theme="dark"] table.rpt th { background: var(--head); }
+:root[data-theme="dark"] .topbar .brand .logo { background: var(--blue); color: #1f1e1d; }
+:root[data-theme="dark"] .nn-btn { color: #1f1e1d; }

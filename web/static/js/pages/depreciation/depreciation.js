@@ -104,7 +104,7 @@ export async function depreciationPage(root, a) {
     ], [t("Depreciation"), t("View")]);
     const btns = rb.btns;
     const filters = h("div", { class: "filters" }, h("div", { class: "field" }, h("label", null, t("Period")), sel));
-    const pg = page({ title: t("Depreciation run"), subtitle: t("Periodic tasks"), ribbon: rb.el }, filters, info, grid.el);
+    const pg = page({ title: t("Depreciation run"), subtitle: t("Depreciation"), ribbon: rb.el }, filters, info, grid.el);
     clear(root);
     root.append(pg.el);
     await refresh();
@@ -158,7 +158,7 @@ export async function periodsPage(root, _a) {
         [{ perm: "periods.manage", label: t("Close period"), icon: "lock", onClick: setStatus("CLOSED") }, { perm: "periods.manage", label: t("Reopen period"), icon: "unlock", onClick: setStatus("OPEN") }],
         [{ label: t("Refresh"), icon: "refresh", onClick: load }],
     ]);
-    const pg = page({ title: t("Depreciation periods"), subtitle: t("Periodic tasks"), ribbon: rb.el }, h("div", { class: "msgbar" }, t("Closing a period blocks any posting into it. Periods are created from the fiscal-year start month in the parameters.")), grid.el);
+    const pg = page({ title: t("Depreciation periods"), subtitle: t("Depreciation"), ribbon: rb.el }, h("div", { class: "msgbar" }, t("Closing a period blocks any posting into it. Periods are created from the fiscal-year start month in the parameters.")), grid.el);
     clear(root);
     root.append(pg.el);
     await load();
@@ -182,7 +182,7 @@ export async function journalPage(root, a) {
     per.onchange = typ.onchange = load;
     const rb = ribbon([[{ label: t("Refresh"), icon: "refresh", onClick: load }]]);
     clear(root);
-    root.append(page({ title: t("Fixed asset journal"), subtitle: t("Inquiries"), ribbon: rb.el }, grid.el).el);
+    root.append(page({ title: t("Fixed asset journal"), subtitle: t("Accounting"), ribbon: rb.el }, grid.el).el);
     await load();
 }
 export async function transactionsPage(root, _a) {
@@ -199,7 +199,7 @@ export async function transactionsPage(root, _a) {
         fail(e);
     } };
     clear(root);
-    root.append(page({ title: t("Fixed asset transactions"), subtitle: t("Inquiries"), ribbon: ribbon([[{ label: t("Refresh"), icon: "refresh", onClick: load }]]).el }, grid.el).el);
+    root.append(page({ title: t("Fixed asset transactions"), subtitle: t("Accounting"), ribbon: ribbon([[{ label: t("Refresh"), icon: "refresh", onClick: load }]]).el }, grid.el).el);
     await load();
 }
 export async function auditPage(root, _a) {
@@ -214,7 +214,7 @@ export async function auditPage(root, _a) {
         fail(e);
     } };
     clear(root);
-    root.append(page({ title: t("Audit log"), subtitle: t("Inquiries"), ribbon: ribbon([[{ label: t("Refresh"), icon: "refresh", onClick: load }]]).el }, grid.el).el);
+    root.append(page({ title: t("Audit log"), subtitle: t("Accounting"), ribbon: ribbon([[{ label: t("Refresh"), icon: "refresh", onClick: load }]]).el }, grid.el).el);
     await load();
 }
 // ================================================================ data checks
@@ -237,6 +237,6 @@ export async function integrityPage(root, _a) {
     };
     const rb = ribbon([[{ label: t("Run checks"), icon: "refresh", primary: true, onClick: load }]]);
     clear(root);
-    root.append(page({ title: t("Data checks"), subtitle: t("Inquiries"), ribbon: rb.el }, h("p", { class: "ic-intro" }, t("These checks recalculate the books from the tables: depreciation lines, journals, disposals, VAT, periods and reports must all agree.")), body).el);
+    root.append(page({ title: t("Data checks"), subtitle: t("Accounting"), ribbon: rb.el }, h("p", { class: "ic-intro" }, t("These checks recalculate the books from the tables: depreciation lines, journals, disposals, VAT, periods and reports must all agree.")), body).el);
     await load();
 }

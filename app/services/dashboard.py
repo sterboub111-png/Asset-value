@@ -15,7 +15,7 @@ def dashboard(con) -> dict:
     acc = sum(a["AccumDep"] for a in assets)
     by_cat: dict[str, dict] = {}
     for a in assets:
-        c = by_cat.setdefault(a["CategoryName"] or "-", {"name": a["CategoryName"] or "-", "cost": 0, "nbv": 0, "count": 0})
+        c = by_cat.setdefault(a["CategoryName"] or "-", {"id": a["CategoryID"], "name": a["CategoryName"] or "-", "cost": 0, "nbv": 0, "count": 0})
         c["cost"] += a["AcquisitionCost"]; c["nbv"] += a["NBV"]; c["count"] += 1
     today = date.today().isoformat()
     cur = period_for_date(con, today)
@@ -55,7 +55,18 @@ def dashboard(con) -> dict:
         "no_location": sum(1 for a in assets if not a["LocationID"]),
         "missing_opening": _missing_opening(con),
         "cycle": _cycle(con, open_p, today),
+        **_year_to_date(con, cur),
     }
+
+
+def _year_to_date(con, cur: dict | None) -> dict:
+    """Depreciation posted in the fiscal year of today's period, and the last period posted."""
+    fy = cur["FiscalYear"] if cur else None
+    ytd = one(con, """SELECT COALESCE(SUM(D.PeriodDepreciation),0) s FROM tbl_Depreciation D JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID
+        WHERE D.PostingStatus='POSTED' AND P.FiscalYear=?""", (fy,))["s"] if fy else 0
+    last = one(con, """SELECT P.PeriodName, P.EndDate FROM tbl_Depreciation D JOIN tbl_DepreciationPeriods P ON P.PeriodID=D.PeriodID
+        WHERE D.PostingStatus='POSTED' ORDER BY P.StartDate DESC LIMIT 1""")
+    return {"fiscal_year": fy, "dep_ytd": r2(ytd), "last_posted": last}
 
 
 def _missing_opening(con) -> list[dict]:

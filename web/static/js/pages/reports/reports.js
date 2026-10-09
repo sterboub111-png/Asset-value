@@ -2,7 +2,7 @@ import { api, lookups } from "../../core/api.js";
 import { t } from "../../core/i18n.js";
 import { getMe, userTitle } from "../../core/session.js";
 import { addPin } from "./dashboard.js";
-import { Analysis, Form, nm, cellValue, csvText, clear, downloadCsv, fail, fmtDate, h, opts, page, ribbon, toast, today } from "../../ui/index.js";
+import { Analysis, combo, fold, Form, nm, cellValue, csvText, clear, downloadCsv, fail, fmtDate, h, opts, page, ribbon, toast, today } from "../../ui/index.js";
 export const REPORT_INFO = {
     "asset-register": { title: "Fixed asset register", desc: "Cost, accumulated depreciation and net book value of every asset at a date." },
     "asset-summary": { title: "Fixed asset summary", desc: "Totals by group, location or cost center at a date." },
@@ -26,24 +26,72 @@ export const REPORT_INFO = {
 };
 const yearStart = () => `${new Date().getFullYear()}-01-01`;
 export const groupSlug = (g) => g.toLowerCase().replace(/\s+/g, "-");
-/** "Reports" without a group: go to the first group (there is no all-reports hub). */
-export async function reportsIndexPage(_root, _a) {
-    const list = await api.get("/api/reports");
-    location.hash = list.length ? `#/reports/g/${groupSlug(list[0].group)}` : "#/";
+// ---- favourites (starred reports, kept in this browser)
+const FAV_KEY = "usool.report.favs";
+export const favourites = () => { try {
+    return JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
 }
-/** A report group (Depreciation, Maintenance ...): its reports sit in the action pane and are listed below. */
-export async function reportsGroupPage(root, a) {
-    const list = await api.get("/api/reports");
-    const group = list.map((r) => r.group).find((g, i, all) => all.indexOf(g) === i && groupSlug(g) === a.args[0]);
-    if (!group) {
-        location.hash = "#/reports";
-        return;
+catch {
+    return [];
+} };
+export function toggleFavourite(id) {
+    const set = new Set(favourites());
+    const on = !set.has(id);
+    if (on)
+        set.add(id);
+    else
+        set.delete(id);
+    try {
+        localStorage.setItem(FAV_KEY, JSON.stringify([...set]));
     }
-    const items = list.filter((r) => r.group === group);
-    const rb = ribbon([items.map((r) => ({ label: t(REPORT_INFO[r.id]?.title || r.id), icon: "report", onClick: () => (location.hash = `#/reports/${r.id}`) }))]);
-    const body = h("div", { class: "hub" }, ...items.map((r) => h("a", { href: `#/reports/${r.id}` }, h("b", null, t(REPORT_INFO[r.id]?.title || r.id)), h("span", null, t(REPORT_INFO[r.id]?.desc || "")))));
+    catch { /* ignore */ }
+    return on;
+}
+const star = (id, onChange) => {
+    const b = h("button", { class: "rc-star", type: "button" });
+    const paint = () => { const on = favourites().includes(id); b.textContent = on ? "★" : "☆"; b.classList.toggle("on", on); b.title = t(on ? "Remove from favourites" : "Add to favourites"); b.setAttribute("aria-pressed", String(on)); };
+    b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggleFavourite(id); paint(); onChange?.(); });
+    paint();
+    return b;
+};
+/** The reports center (QuickBooks-style): find a report by name, favourites first, then every report by group. */
+export async function reportsIndexPage(root, a) {
+    const list = await api.get("/api/reports");
+    const q = h("input", { class: "rc-search", type: "search", placeholder: t("Find a report by name"), "aria-label": t("Find a report by name") });
+    const body = h("div", { class: "rc-body" });
+    const row = (r, render) => h("a", { class: "rc-row", href: `#/reports/${r.id}` }, star(r.id, render), h("span", { class: "rc-name" }, t(REPORT_INFO[r.id]?.title || r.id)), h("span", { class: "rc-desc" }, t(REPORT_INFO[r.id]?.desc || "")));
+    const render = () => {
+        const k = fold(q.value);
+        const hit = (r) => !k || fold(t(REPORT_INFO[r.id]?.title || r.id)).includes(k) || fold(t(REPORT_INFO[r.id]?.desc || "")).includes(k) || fold(t(r.group)).includes(k);
+        clear(body);
+        const favs = list.filter((r) => favourites().includes(r.id) && hit(r));
+        if (favs.length)
+            body.append(h("section", { class: "rc-group fav" }, h("h2", null, t("Favourites")), ...favs.map((r) => row(r, render))));
+        const groups = list.map((r) => r.group).filter((g, i, all) => all.indexOf(g) === i);
+        let shown = 0;
+        for (const g of groups) {
+            const items = list.filter((r) => r.group === g && hit(r));
+            shown += items.length;
+            if (items.length)
+                body.append(h("section", { class: "rc-group", id: `rg-${groupSlug(g)}` }, h("h2", null, t(g)), ...items.map((r) => row(r, render))));
+        }
+        if (!shown)
+            body.append(h("div", { class: "empty" }, t("No report matches.")));
+    };
+    q.addEventListener("input", render);
+    render();
+    const rb = ribbon([[{ label: t("Dashboard"), icon: "chart", onClick: () => (location.hash = "#/charts") }]]);
     clear(root);
-    root.append(page({ title: t(group), subtitle: t("Reports"), ribbon: rb.el }, body).el);
+    root.append(page({ title: t("Reports"), ribbon: rb.el }, h("div", { class: "rc" }, h("div", { class: "rc-top" }, q), body)).el);
+    const g = a.query.get("group");
+    if (g)
+        document.getElementById(`rg-${g}`)?.scrollIntoView({ block: "start" });
+    else
+        q.focus();
+}
+/** Old links to a report group open the center at that group. */
+export async function reportsGroupPage(_root, a) {
+    location.replace(`#/reports?group=${encodeURIComponent(a.args[0])}`);
 }
 async function paramDefs(ids) {
     const L = await lookups();
@@ -77,6 +125,27 @@ async function paramDefs(ids) {
     return ids.map((i) => (map[i].type === "select" ? { ...map[i], search: true } : map[i]));
 }
 const VIEW_KEY = "usool.report.view";
+// ---- report periods (QuickBooks-style presets), on the fiscal year from the parameters
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function periodPresets(params, fyStartMonth) {
+    const now = new Date(), y = now.getFullYear(), m = now.getMonth(), q = Math.floor(m / 3) * 3;
+    const first = (yy, mm) => new Date(yy, mm, 1), last = (yy, mm) => new Date(yy, mm + 1, 0);
+    const fs = Math.min(12, Math.max(1, fyStartMonth || 1)) - 1;
+    const fyYear = m >= fs ? y : y - 1;
+    if (params.includes("from") && params.includes("to")) {
+        const r = (id, label, a, b) => ({ id, label, from: isoDay(a), to: isoDay(b) });
+        return [r("this-month", "This month", first(y, m), last(y, m)), r("last-month", "Last month", first(y, m - 1), last(y, m - 1)),
+            r("this-quarter", "This quarter", first(y, q), last(y, q + 2)), r("last-quarter", "Last quarter", first(y, q - 3), last(y, q - 1)),
+            r("ytd", "This fiscal year to date", first(fyYear, fs), now), r("this-year", "This fiscal year", first(fyYear, fs), last(fyYear + 1, fs - 1)),
+            r("last-year", "Last fiscal year", first(fyYear - 1, fs), last(fyYear, fs - 1))];
+    }
+    if (params.includes("as_of")) {
+        const r = (id, label, d) => ({ id, label, asOf: isoDay(d) });
+        return [r("today", "Today", now), r("end-last-month", "End of last month", last(y, m - 1)), r("end-last-quarter", "End of last quarter", last(y, q - 1)),
+            r("end-last-year", "End of last fiscal year", last(fyYear, fs - 1))];
+    }
+    return [];
+}
 // Printing: a table still wider than the A4 landscape page after the print styles is scaled down to fit, never cut off.
 const PRINT_WIDTH = 1030; // 297 mm less 24 mm of margins, in CSS pixels
 addEventListener("beforeprint", () => {
@@ -109,6 +178,22 @@ export async function reportPage(root, a) {
         params[d.name] = a.query.get(d.name) ?? (a.query.has("run") && !d.required ? "" : defaults[d.name] ?? "");
     // parameters sit in a bar above the data: the report runs at once with the defaults, Apply runs it again
     const form = new Form(defs, params, "fields rp-fields");
+    // the period presets fill the date fields and run the report; "Custom" is whatever the fields say
+    const presets = periodPresets(meta.params, Number(L.settings.FiscalYearStartMonth) || 1);
+    const current = presets.find((p) => (p.asOf ? p.asOf === params.as_of : p.from === params.from && p.to === params.to));
+    const presetBox = presets.length ? combo([...presets.map((p) => ({ value: p.id, label: t(p.label) })), { value: "custom", label: t("Custom") }], { value: current ? current.id : "custom", allowEmpty: false, label: t("Report period"), width: 230 }) : null;
+    presetBox?.addEventListener("change", () => {
+        const p = presets.find((x) => x.id === presetBox.value);
+        if (!p)
+            return;
+        if (p.asOf)
+            form.set("as_of", p.asOf);
+        else {
+            form.set("from", p.from);
+            form.set("to", p.to);
+        }
+        apply();
+    });
     const apply = () => {
         if (!form.validate())
             return;
@@ -123,7 +208,7 @@ export async function reportPage(root, a) {
         e.preventDefault();
         apply();
     } });
-    const pbar = defs.length ? h("div", { class: "rp-bar" }, h("div", { class: "rp-desc" }, t(REPORT_INFO[id]?.desc || "")), form.el, h("div", { class: "rp-actions" }, h("button", { class: "btn primary", type: "button", onclick: apply }, t("Apply")), h("button", { class: "btn", type: "button", onclick: () => { if (location.hash === `#/reports/${id}`)
+    const pbar = defs.length ? h("div", { class: "rp-bar" }, h("div", { class: "rp-desc" }, t(REPORT_INFO[id]?.desc || "")), presetBox ? h("div", { class: "field rp-preset" }, h("label", null, t("Report period")), presetBox) : null, form.el, h("div", { class: "rp-actions" }, h("button", { class: "btn primary", type: "button", onclick: apply }, t("Apply")), h("button", { class: "btn", type: "button", onclick: () => { if (location.hash === `#/reports/${id}`)
             void reportPage(root, a);
         else
             location.hash = `#/reports/${id}`; } }, t("Reset")))) : null;
@@ -138,16 +223,17 @@ export async function reportPage(root, a) {
     const body = h("div", { class: "rp-body" }, h("div", { class: "loading" }, t("Loading…")));
     const fileName = () => title.replace(/[^\w\u0600-\u06ff-]+/g, "-");
     const rb = ribbon([
+        [{ label: t("Back to reports"), icon: "back", onClick: () => (location.hash = "#/reports") }],
         [{ id: "analysis", label: t("Analyze"), icon: "columns", active: mode === "analysis", onClick: () => setMode("analysis") },
             { id: "layout", label: t("Report layout"), icon: "report", active: mode === "layout", onClick: () => setMode("layout") }],
         [{ label: t("Print"), icon: "print", onClick: () => window.print() },
             { label: t("Export to Excel"), icon: "download", onClick: () => { if (res)
                     mode === "analysis" && an ? an.exportCsv(fileName()) : exportCsv(res, title); } }],
-        list.filter((r) => r.group === meta.group).map((r) => ({ label: t(REPORT_INFO[r.id]?.title || r.id), icon: "report", active: r.id === id, onClick: () => (location.hash = `#/reports/${r.id}`) })),
     ]);
     clear(root);
-    root.append(page({ title, subtitle: t("Reports"), ribbon: rb.el }, pbar, body).el);
-    const lines = () => defs.filter((d) => params[d.name]).map((d) => {
+    root.append(page({ title, subtitle: t("Reports"), ribbon: rb.el, pills: [star(id)] }, pbar, body).el);
+    // the heading already states the period; the parameter line lists the filters (group, location ...)
+    const lines = () => defs.filter((d) => params[d.name] && d.type !== "date" && d.name !== "fiscal_year").map((d) => {
         const opt = d.options?.find((o) => String(o.value) === params[d.name]);
         return { label: t(d.label), value: opt ? opt.label : d.type === "date" ? fmtDate(params[d.name]) : params[d.name] };
     });
@@ -242,7 +328,9 @@ function renderReport(r, title, paramLines, user) {
     const tr = (cls, cells) => h("tr", { class: cls }, ...cells);
     const tbody = h("tbody");
     const ENUM = new Set(["SupplierType", "VatStatus", "Basis", "Status", "MaintenanceType", "Priority", "Timing", "Source", "TransactionType", "PostingStatus", "JournalType"]);
-    const cell = (c, row) => h("td", { class: isNum(c.type) ? "num" : "" }, ENUM.has(c.key) ? t(String(row[c.key] ?? "")) : cellValue(c, row[c.key]));
+    // codes, references and dates never break across lines (an asset code would split at its hyphen)
+    const keep = (c) => isNum(c.type) || c.type === "date" || /Code$|^Reference$|No$/.test(c.key);
+    const cell = (c, row) => h("td", { class: `${isNum(c.type) ? "num" : ""} ${keep(c) ? "nw" : ""}` }, ENUM.has(c.key) ? t(String(row[c.key] ?? "")) : cellValue(c, row[c.key]));
     const totalsRow = (cls, label, rows, keys) => tr(cls, cols.map((c, i) => h("td", { class: isNum(c.type) ? "num" : "" }, keys.includes(c.key) ? cellValue(c, sum(rows, c.key)) : i === 0 ? label : "")));
     if (!r.rows.length)
         tbody.append(tr("", [h("td", { colspan: cols.length, class: "empty" }, t("No data for these parameters."))]));
@@ -275,12 +363,12 @@ function renderReport(r, title, paramLines, user) {
     const thead = h("thead", null, tr("", cols.map((c) => h("th", { class: isNum(c.type) ? "num" : "" }, t(c.label)))));
     return h("div", { class: "rpt-doc" }, reportHead(r, title, paramLines, user), h("div", { style: "overflow:auto" }, h("table", { class: "rpt" }, thead, tbody)), h("div", { class: "rpt-foot" }, h("span", null, `${t("Usool")} · ${t("{0} records", r.rows.length)}`), h("span", null, title)));
 }
-/** Company, title, parameters and the printed-on / by / currency block of a report. */
+/** The heading of a report, as accountants expect it: company, report name and period centered, the print details on one quiet line. */
 function reportHead(r, title, paramLines, user) {
     const when = new Date();
     const stamp = `${fmtDate(r.generated)} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
     const period = r.subtitle ? subtitleText(r.subtitle) : "";
-    return h("div", { class: "rh" }, h("div", { class: "rh-l" }, h("div", { class: "co" }, r.company || t("Usool")), h("h2", null, title), period && !paramLines.length ? h("div", { class: "period" }, period) : null, paramLines.length ? h("div", { class: "params" }, ...paramLines.map((p) => h("span", null, h("b", null, `${p.label}: `), p.value))) : null), h("div", { class: "meta" }, h("div", null, h("span", null, `${t("Printed")}: `), stamp), h("div", null, h("span", null, `${t("Printed by")}: `), user), h("div", null, h("span", null, `${t("Currency")}: `), r.currency)));
+    return h("div", { class: "rh" }, h("div", { class: "co" }, r.company || t("Usool")), h("h2", null, title), period ? h("div", { class: "period" }, period) : null, paramLines.length ? h("div", { class: "params" }, ...paramLines.map((p) => h("span", null, h("b", null, `${p.label}: `), p.value))) : null, h("div", { class: "meta" }, `${t("Printed")} ${stamp} · ${t("Printed by")} ${user} · ${t("Currency")} ${r.currency}`));
 }
 function exportCsv(r, title) {
     const lines = [r.columns.map((c) => csvText(t(c.label))).join(",")];

@@ -229,3 +229,13 @@ u-combo .cb-none { padding: 8px 12px; color: var(--ink-3); font-size: 13px; }
 .ic-check.bad { border-inline-start-color: var(--err); }
 .ic-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .ic-check ul { margin: 8px 0 2px; padding-inline-start: 20px; color: var(--ink-2); font-size: 13px; } .ic-check li { margin: 3px 0; }
+/* workspace statement: the book value by group, ruled like a ledger */
+.ws-statement { margin-top: 16px; }
+.ws-ytd { display: flex; flex-wrap: wrap; gap: 6px 28px; padding: 10px 16px 0; color: var(--ink-2); font-size: 13px; }
+.ws-ytd b { color: var(--ink); font-variant-numeric: tabular-nums; }
+table.ws-stmt { width: calc(100% - 32px); margin: 8px 16px 16px; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.ws-stmt th { text-align: start; font-weight: 600; color: var(--ink-2); font-size: 12.5px; padding: 8px 8px; border-bottom: 1px solid var(--line-2); }
+.ws-stmt td { padding: 8px 8px; border-bottom: 1px solid var(--line); }
+.ws-stmt .num { text-align: end; } [dir=rtl] .ws-stmt .num { direction: ltr; text-align: left; }
+.ws-stmt tfoot td { font-weight: 700; border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); }
+.ws-stmt tbody tr:hover td { background: var(--hover); }

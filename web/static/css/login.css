@@ -19,7 +19,7 @@
 .login-bg i:nth-child(1) { background: radial-gradient(circle, #9dbdd2 0%, transparent 70%); top: -18vmax; inset-inline-start: -12vmax; animation: drift 26s ease-in-out infinite alternate; }
 .login-bg i:nth-child(2) { background: radial-gradient(circle, #2f5f7f 0%, transparent 70%); bottom: -24vmax; inset-inline-end: -14vmax; opacity: .28; animation: drift 32s ease-in-out infinite alternate-reverse; }
 .login-bg i:nth-child(3) { background: radial-gradient(circle, #a8874c 0%, transparent 70%); top: 30vh; inset-inline-end: 22vw; width: 28vmax; height: 28vmax; opacity: .16; animation: drift 38s ease-in-out infinite alternate; }
-:root[data-theme="dark"] .login-bg { background: linear-gradient(160deg, #15191c 0%, #1b2c3a 100%); }
+:root[data-theme="dark"] .login-bg { background: linear-gradient(160deg, #1f1e1d 0%, #2a2926 100%); }
 :root[data-theme="dark"] .login-bg i { opacity: .28; }
 @keyframes drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(7vw, 5vh) scale(1.12); } }
 .login-card { position: relative; overflow: hidden; animation: card-in .45s cubic-bezier(.2, .8, .2, 1) both; backdrop-filter: blur(2px); }

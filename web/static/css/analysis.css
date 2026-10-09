@@ -150,11 +150,11 @@ table.an-grid td.empty { cursor: default; }
 /* ---- charts: categorical palette, validated (scripts/validate_palette.js) on the paper surface and on the dark surface */
 :root {
   --viz-1: #2f6a9e; --viz-2: #c46a2b; --viz-3: #178f7a; --viz-4: #b58710; --viz-5: #a8558a; --viz-6: #4d8a34; --viz-7: #6a5aad; --viz-8: #b8443f;
-  --viz-other: #9a9a94; --viz-grid: #ebe8e0; --viz-axis: #c9c4b8;
+  --viz-other: #9aa1a8; --viz-grid: #eceef1; --viz-axis: #c4cad1;
 }
 :root[data-theme="dark"] {
   --viz-1: #4f90cc; --viz-2: #d07a3e; --viz-3: #2fa28c; --viz-4: #b3861a; --viz-5: #c070a2; --viz-6: #64a24a; --viz-7: #8d80d0; --viz-8: #d06560;
-  --viz-other: #7d7f80; --viz-grid: #343a40; --viz-axis: #59616a;
+  --viz-other: #85837b; --viz-grid: #3e3d39; --viz-axis: #5f5d56;
 }
 .viz { position: relative; }
 .viz-frame { position: relative; }
@@ -219,3 +219,20 @@ table.an-grid td.empty { cursor: default; }
   .viz-mark, .viz-key i, .viz-drow i, .viz-line, .viz-dot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 .an-vsearch { width: 100%; margin-bottom: 6px; }
+
+/* ---- reports center (QuickBooks-style) */
+.rc { max-width: 1100px; }
+.rc-top { margin-bottom: 14px; }
+.rc-search { width: min(520px, 100%); height: 38px; border: 1px solid var(--line-2); border-radius: 8px; padding: 0 14px; background: var(--paper); font-size: 14px; }
+.rc-search:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+.rc-group { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 14px; overflow: hidden; }
+.rc-group h2 { margin: 0; padding: 12px 16px; font-size: 15px; font-weight: 600; border-bottom: 1px solid var(--line); background: var(--head); }
+.rc-group.fav h2 { color: var(--blue-t); }
+.rc-row { display: grid; grid-template-columns: 28px minmax(200px, 300px) minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); color: var(--ink); }
+.rc-row:last-child { border-bottom: 0; } .rc-row:hover { background: var(--blue-xl); text-decoration: none; }
+.rc-name { color: var(--blue-t); font-weight: 600; } .rc-desc { color: var(--ink-2); font-size: 13px; }
+@media (max-width: 760px) { .rc-row { grid-template-columns: 28px 1fr; } .rc-desc { grid-column: 2; } }
+.rc-star { border: 0; background: none; cursor: pointer; font-size: 17px; line-height: 1; color: var(--ink-3); padding: 2px; width: 26px; height: 26px; border-radius: 50%; }
+.rc-star:hover { background: var(--hover); color: var(--gold); } .rc-star.on { color: var(--gold); }
+.title-row .rc-star { font-size: 20px; align-self: center; }
+.rp-bar .rp-preset { width: 230px; }

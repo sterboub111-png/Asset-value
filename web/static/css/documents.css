@@ -23,13 +23,13 @@
 .report-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .paper { background: var(--paper); border: 1px solid var(--line); padding: 28px 36px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: auto; max-width: 100%; }
 .rpt-doc { min-width: 640px; }
-.paper .rh { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--line-2); }
-.paper .rh .co { font-size: 13px; font-weight: 600; color: var(--ink); }
-.paper .rh h2 { margin: 2px 0 4px; font-size: 22px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
+.paper .rh { text-align: center; padding-bottom: 14px; margin-bottom: 16px; border-bottom: 2px solid var(--ink); }
+.paper .rh .co { font-size: 14px; font-weight: 700; color: var(--ink); letter-spacing: .01em; }
+.paper .rh h2 { margin: 2px 0 2px; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
 .paper .rh .period { font-size: 13px; color: var(--ink-2); }
-.paper .rh .params { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; font-size: 12px; color: var(--ink-2); }
+.paper .rh .params { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 18px; margin-top: 4px; font-size: 12px; color: var(--ink-2); }
 .paper .rh .params b { font-weight: 600; color: var(--ink); }
-.paper .rh .meta { text-align: end; font-size: 12px; color: var(--ink-2); line-height: 1.7; white-space: nowrap; }
+.paper .rh .meta { margin-top: 6px; font-size: 11px; color: var(--ink-3); }
 table.rpt { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 table.rpt th { background: var(--head); color: var(--ink); padding: 7px 8px; text-align: start; font-weight: 600; white-space: nowrap; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
 table.rpt th.num, table.rpt td.num { text-align: end; font-variant-numeric: tabular-nums; }
@@ -58,3 +58,4 @@ h2.sec { font-size: 15px; margin: 18px 0 8px; font-weight: 600; } h2.sec:first-c
 
 @page handover { size: A4 portrait; margin: 14mm 14mm 16mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; color: #605e5c; } }
 @media print { .handover-paper { padding: 0; max-width: none; margin: 0; } }
+table.rpt td.nw, table.an-grid td.nw { white-space: nowrap; }
