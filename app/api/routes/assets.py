@@ -35,6 +35,28 @@ def _aimp(c):
         return p
     return importer.run_import(c.con, name, c.raw, c.q("skip") == "1")
 
+# ---- physical inventory (counts)
+@route("GET", "/api/counts")
+def _cnl(c): return s.list_counts(c.con)
+
+@route("POST", "/api/counts")
+def _cnc(c): return s.create_count(c.con, c.body)
+
+@route("GET", "/api/counts/(\\d+)")
+def _cng(c, i): return s.get_count(c.con, int(i))
+
+@route("POST", "/api/counts/(\\d+)/scan")
+def _cns(c, i): return s.scan(c.con, int(i), c.body)
+
+@route("DELETE", "/api/counts/(\\d+)/lines/(\\d+)")
+def _cnu(c, i, ln): return s.unscan(c.con, int(i), int(ln))
+
+@route("POST", "/api/counts/(\\d+)/close")
+def _cnx(c, i): return s.close_count(c.con, int(i), c.body)
+
+@route("DELETE", "/api/counts/(\\d+)")
+def _cnd(c, i): return s.delete_count(c.con, int(i))
+
 @route("GET", "/api/assets/next-code")
 def _anc(c): return {"code": s.next_asset_code(c.con, c.q("category"))}
 

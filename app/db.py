@@ -158,6 +158,20 @@ CREATE TABLE IF NOT EXISTS tbl_Maintenance(
   Notes TEXT, CreatedAt TEXT, CreatedBy TEXT, ModifiedAt TEXT, ModifiedBy TEXT);
 CREATE INDEX IF NOT EXISTS ix_mt_asset ON tbl_Maintenance(AssetID);
 CREATE INDEX IF NOT EXISTS ix_mt_status ON tbl_Maintenance(Status);
+CREATE TABLE IF NOT EXISTS tbl_AssetCounts(
+  CountID INTEGER PRIMARY KEY AUTOINCREMENT,
+  CountNo TEXT NOT NULL UNIQUE, Title TEXT NOT NULL, CountDate TEXT NOT NULL,
+  LocationID INTEGER REFERENCES tbl_Locations(LocationID),
+  Status TEXT NOT NULL DEFAULT 'Open', Notes TEXT,
+  CreatedAt TEXT, CreatedBy TEXT, ClosedAt TEXT, ClosedBy TEXT);
+CREATE TABLE IF NOT EXISTS tbl_AssetCountLines(
+  LineID INTEGER PRIMARY KEY AUTOINCREMENT,
+  CountID INTEGER NOT NULL REFERENCES tbl_AssetCounts(CountID),
+  AssetID INTEGER REFERENCES tbl_Assets(AssetID),
+  ScannedCode TEXT, Expected INTEGER NOT NULL DEFAULT 0, Found INTEGER NOT NULL DEFAULT 0,
+  FoundLocationID INTEGER REFERENCES tbl_Locations(LocationID), FoundAt TEXT, FoundBy TEXT, Notes TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_countline_asset ON tbl_AssetCountLines(CountID, AssetID) WHERE AssetID IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_countline_count ON tbl_AssetCountLines(CountID);
 CREATE TABLE IF NOT EXISTS tbl_AuditLog(
   LogID INTEGER PRIMARY KEY AUTOINCREMENT,
   LogDate TEXT NOT NULL, UserName TEXT, Action TEXT, Entity TEXT, EntityID TEXT, Details TEXT);

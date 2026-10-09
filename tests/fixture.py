@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app import db
 
-OPERATIONAL = ["tbl_DepreciationJournal", "tbl_Depreciation", "tbl_AssetAttachments", "tbl_AssetCustody", "tbl_Maintenance",
+OPERATIONAL = ["tbl_AssetCountLines", "tbl_AssetCounts", "tbl_DepreciationJournal", "tbl_Depreciation", "tbl_AssetAttachments", "tbl_AssetCustody", "tbl_Maintenance",
                "tbl_AssetTransactions", "tbl_Assets", "tbl_Suppliers", "tbl_Employees", "tbl_AuditLog", "tbl_Sessions", "tbl_Users"]
 
 

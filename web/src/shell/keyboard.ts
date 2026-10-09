@@ -3,6 +3,7 @@ import { can, getMe } from "../core/session.js";
 import { DEFAULTS, capture, comboOf, firesWhileTyping, keysOf } from "../core/shortcuts.js";
 import { runSave } from "../ui/index.js";
 import { permFor } from "./routes.js";
+import { backupNow, cycleAppearance, switchLanguage } from "./prefs.js";
 
 const typing = (el: EventTarget | null): boolean => {
   const n = el as HTMLElement | null;
@@ -28,7 +29,10 @@ function run(act: string): boolean {
     case "new": case "edit": case "delete": case "refresh": return ribbonAct(act);
     case "search": { const i = document.querySelector<HTMLInputElement>(".tb-search input"); i?.focus(); return !!i; }
     case "help": location.hash = "#/settings/shortcuts"; return true;
-    default: return clickShell(act);   // nav, theme, lang, backup
+    case "lang": void switchLanguage(); return true;
+    case "theme": cycleAppearance(); return true;
+    case "backup": void backupNow(); return true;
+    default: return clickShell(act);   // nav
   }
 }
 

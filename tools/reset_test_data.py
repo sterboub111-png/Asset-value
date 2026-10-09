@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from app import db, services as s  # noqa: E402
 
-OPERATIONAL = ["tbl_DepreciationJournal", "tbl_Depreciation", "tbl_AssetAttachments", "tbl_AssetCustody", "tbl_Maintenance",
+OPERATIONAL = ["tbl_AssetCountLines", "tbl_AssetCounts", "tbl_DepreciationJournal", "tbl_Depreciation", "tbl_AssetAttachments", "tbl_AssetCustody", "tbl_Maintenance",
                "tbl_AssetTransactions", "tbl_Assets", "tbl_AuditLog"]
 CONTACTS = ["tbl_Suppliers", "tbl_Employees"]
 

@@ -437,6 +437,7 @@ def required_permission(method: str, path: str) -> str | None:
         (r"^/api/custody", "custody.view" if read else "custody.manage"),
         (r"^/api/reports", "reports.view"),
         (r"^/api/integrity$", "reports.view"),
+        (r"^/api/counts", "assets.view" if read else "assets.edit"),   # physical inventory
     ]
     for pattern, perm in rules:
         if re.match(pattern, path):

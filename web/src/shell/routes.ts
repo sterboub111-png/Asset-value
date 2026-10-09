@@ -6,6 +6,8 @@ import { maintenanceFormPage, maintenanceListPage } from "../pages/maintenance/m
 import { reportPage, reportsGroupPage, reportsIndexPage } from "../pages/reports/reports.js";
 import { chartsDashboardPage } from "../pages/reports/dashboard.js";
 import { assetImportPage } from "../pages/assets/import.js";
+import { assetLabelsPage } from "../pages/assets/labels.js";
+import { countPage, countsListPage } from "../pages/assets/counts.js";
 import { custodyFormPage, custodyListPage, handoverFormPage } from "../pages/contacts/custody.js";
 import { employeeFormPage, employeesListPage } from "../pages/contacts/employees.js";
 import { supplierFormPage, suppliersListPage } from "../pages/contacts/suppliers.js";
@@ -18,7 +20,10 @@ export const ROUTES: Route[] = [
   { re: /^$/, fn: dashboardPage, nav: "#/", crumb: "Home" },
   { re: /^charts$/, fn: chartsDashboardPage, nav: "#/charts", crumb: "Dashboard" },
   { re: /^assets$/, fn: assetsListPage, nav: "#/assets", crumb: "All fixed assets" },
-  { re: /^assets\/import$/, fn: assetImportPage, nav: "#/assets", crumb: "Import fixed assets" },
+  { re: /^assets\/import$/, fn: assetImportPage, nav: "#/assets/import", crumb: "Import fixed assets" },
+  { re: /^assets\/labels$/, fn: assetLabelsPage, nav: "#/assets/labels", crumb: "Asset labels" },
+  { re: /^counts$/, fn: countsListPage, nav: "#/counts", crumb: "Physical counts" },
+  { re: /^counts\/(\d+)$/, fn: countPage, nav: "#/counts", crumb: "Physical count" },
   { re: /^assets\/(new|\d+)$/, fn: assetFormPage, nav: "#/assets", crumb: "Fixed asset" },
   { re: /^maintenance$/, fn: maintenanceListPage, nav: "#/maintenance", crumb: "Maintenance orders" },
   { re: /^maintenance\/(new|\d+)$/, fn: maintenanceFormPage, nav: "#/maintenance", crumb: "Maintenance order" },
@@ -47,7 +52,9 @@ export interface NavItem { label: string; icon: string; href: string; children?:
 
 export const NAV: NavItem[] = [
   { label: "Home", icon: "home", href: "#/" },
-  { label: "Fixed assets", icon: "asset", href: "#/assets" },
+  { label: "Fixed assets", icon: "asset", href: "#/assets", children: [
+    { label: "All fixed assets", href: "#/assets" }, { label: "Physical counts", href: "#/counts" },
+    { label: "Asset labels", href: "#/assets/labels" }, { label: "Import from Excel", href: "#/assets/import" }] },
   { label: "Depreciation", icon: "calc", href: "#/depreciation", children: [
     { label: "Depreciation run", href: "#/depreciation" }, { label: "Depreciation periods", href: "#/periods" }] },
   { label: "Maintenance", icon: "wrench", href: "#/maintenance" },
@@ -67,7 +74,7 @@ export function permFor(href: string): string | null {
   if (/^#\/assets\/(new|import)/.test(href)) return "assets.edit";
   if (/^#\/maintenance\/new/.test(href)) return "maintenance.edit";
   if (/^#\/(suppliers|employees)\/new/.test(href)) return "contacts.edit";
-  if (/^#\/assets/.test(href)) return "assets.view";
+  if (/^#\/(assets|counts)/.test(href)) return "assets.view";
   if (/^#\/maintenance/.test(href)) return "maintenance.view";
   if (/^#\/(suppliers|employees)/.test(href)) return "contacts.view";
   if (/^#\/custody/.test(href)) return "custody.view";

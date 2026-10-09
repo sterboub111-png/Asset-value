@@ -3,6 +3,7 @@ import { can, getMe } from "../core/session.js";
 import { DEFAULTS, capture, comboOf, firesWhileTyping, keysOf } from "../core/shortcuts.js";
 import { runSave } from "../ui/index.js";
 import { permFor } from "./routes.js";
+import { backupNow, cycleAppearance, switchLanguage } from "./prefs.js";
 const typing = (el) => {
     const n = el;
     return !!n && (n.tagName === "INPUT" || n.tagName === "TEXTAREA" || n.tagName === "SELECT" || n.isContentEditable);
@@ -35,7 +36,16 @@ function run(act) {
         case "help":
             location.hash = "#/settings/shortcuts";
             return true;
-        default: return clickShell(act); // nav, theme, lang, backup
+        case "lang":
+            void switchLanguage();
+            return true;
+        case "theme":
+            cycleAppearance();
+            return true;
+        case "backup":
+            void backupNow();
+            return true;
+        default: return clickShell(act); // nav
     }
 }
 export function initKeyboard() {

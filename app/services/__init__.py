@@ -45,6 +45,9 @@ from .employees import (
 from .integrity import (
     run_checks,
 )
+from .counts import (
+    close_count, create_count, delete_count, get_count, list_counts, scan, unscan,
+)
 from .custody import (
     CUSTODY_SQL, _next_custody_no, add_custody_attachment, delete_custody, get_custody, issue_custody, list_custody, return_custody, update_custody,
 )
@@ -161,5 +164,6 @@ __all__ = [
     "return_custody",
     "update_custody",
     "run_checks",
+    "close_count", "create_count", "delete_count", "get_count", "list_counts", "scan", "unscan",
     "db",
 ]

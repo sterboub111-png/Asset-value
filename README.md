@@ -27,9 +27,14 @@ imported once from `Gooya asset.accdb`.
 ## Import from Excel
 - Fixed assets > Import from Excel (`#/assets/import`): download the template (Arabic or English headers, a Lists sheet with valid groups, locations, cost centers and suppliers), choose an .xlsx or .csv file, review every row (checked with the asset form's rules), then import the ready rows. Read with the standard library only (`app/services/importer.py`).
 
+## Physical counts, labels and forecast
+- **Asset labels** (`#/assets/labels`): Code 39 barcodes of the asset codes on A4 label sheets (24 or 14 per page).
+- **Physical counts** (`#/counts`): a count snapshots the assets expected at a location; scan (any barcode scanner) or type codes / serial numbers; the count shows found, missing, found elsewhere, not expected and unknown; closing can transfer the assets found elsewhere (`app/services/counts.py`).
+- **Depreciation forecast** report: the depreciation still to come month by month (up to 60 months), by the same rules as the depreciation run.
+
 ## Tests and tools
 - `python -m tests.test_flow` business rules, `python -m tests.test_auth` sign-in and permissions, `python -m tests.test_review` regression tests for the review fixes,
-  `python -m tests.test_integrity` the data checks, `python -m tests.test_import` import from Excel (`npm test` runs all five). Every suite builds its own clean database from `data/access_export.json`; none reads `data/gooya_asset.db`.
+  `python -m tests.test_integrity` the data checks, `python -m tests.test_import` import from Excel, `python -m tests.test_counts` physical counts and the depreciation forecast (`npm test` runs all six). Every suite builds its own clean database from `data/access_export.json`; none reads `data/gooya_asset.db`.
 - **Data checks** (Inquiries > Data checks, `GET /api/integrity`, `app/services/integrity.py`): the arithmetic the books must satisfy, recalculated from the tables - depreciation lines, journal balance, disposals, VAT, periods, and reports tied to the books.
 - `python tools/reset_test_data.py --yes` removes test data safely; `python tools/restore_backup.py <zip>` restores a backup.
 - `node node_modules/typescript/bin/tsc -p .` builds the front end (strict, unused code is an error).

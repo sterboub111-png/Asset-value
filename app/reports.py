@@ -12,6 +12,7 @@ REPORTS = [
     dict(id="asset-summary", group="Fixed assets", params=["as_of", "group_by"]),
     dict(id="rollforward", group="Fixed assets", params=["from", "to"]),
     dict(id="depreciation-schedule", group="Depreciation", params=["fiscal_year", "category"]),
+    dict(id="depreciation-forecast", group="Depreciation", params=["months", "category"]),
     dict(id="depreciation-journal", group="Depreciation", params=["from", "to"]),
     dict(id="gl-balances", group="Depreciation", params=["as_of", "account"]),
     dict(id="disposals", group="Transactions", params=["from", "to"]),
@@ -155,6 +156,62 @@ def depreciation_schedule(con, p):
                               ("ClosingNBV", "Net book value", "money"), ("PostingStatus", "Status", "text")),
                 rows=data, group_by="AssetCode", totals=["PeriodDepreciation"], subtotal_only=["PeriodDepreciation"],
                 order={"PeriodName": "PeriodNumber"}, subtitle=f"Fiscal year {fy}")
+
+
+def depreciation_forecast(con, p):
+    """Depreciation still to come, month by month: the same straight-line rule as the depreciation run (monthly =
+    (cost - residual) / life, the last month takes the exact remainder), from the first month not yet posted."""
+    months = to_int(p.get("months"), "Months", 12)
+    if not 1 <= months <= 60:
+        raise ApiError("Months must be between 1 and 60")
+    first = one(con, """SELECT MIN(P.StartDate) s FROM tbl_DepreciationPeriods P WHERE NOT EXISTS
+        (SELECT 1 FROM tbl_Depreciation D WHERE D.PeriodID=P.PeriodID AND D.PostingStatus='POSTED')""", raw=True)["s"] or date.today().isoformat()
+    y0, m0 = int(first[:4]), int(first[5:7])
+    start_idx = y0 * 12 + m0 - 1
+    names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    sql = """SELECT A.*, C.CategoryName, C.CategoryNameAr, M.MethodCode,
+        COALESCE(A.OpeningAccumDep,0) + COALESCE((SELECT SUM(D.PeriodDepreciation) FROM tbl_Depreciation D WHERE D.AssetID=A.AssetID AND D.PostingStatus='POSTED'),0) AS Accum,
+        (SELECT COUNT(*) FROM tbl_Depreciation D WHERE D.AssetID=A.AssetID AND D.PostingStatus='POSTED') AS Posted
+        FROM tbl_Assets A LEFT JOIN tbl_AssetCategories C ON C.CategoryID=A.CategoryID LEFT JOIN tbl_DepreciationMethods M ON M.MethodID=A.MethodID
+        WHERE A.AssetStatus<>'Disposed' AND A.IsActive=1"""
+    args: list = []
+    if p.get("category"):
+        sql += " AND A.CategoryID=?"; args.append(p["category"])
+    first_period = one(con, "SELECT MIN(StartDate) s FROM tbl_DepreciationPeriods", raw=True)["s"]
+    out = []
+    for a in rows(con, sql + " ORDER BY A.AssetCode", args):
+        if a["MethodCode"] != "SL" or not a["UsefulLifeYears"]:
+            continue
+        start = a["DepreciationStartDate"] or a["InServiceDate"] or a["AcquisitionDate"]
+        if first_period and start[:7] < first_period[:7] and not (a["OpeningAccumDep"] or 0) and not a["Posted"]:
+            continue   # the depreciation run refuses it until the opening balance is entered; so does the forecast
+        base = (a["AcquisitionCost"] or 0) - (a["ResidualValue"] or 0)
+        monthly = base / (a["UsefulLifeYears"] * 12)
+        accum = a["Accum"]
+        idx = max(start_idx, int(start[:4]) * 12 + int(start[5:7]) - 1)
+        for k in range(start_idx, start_idx + months):
+            if k < idx:
+                continue
+            remaining = base - accum
+            amount = r2(max(0, min(monthly, remaining)))
+            if amount > 0 and remaining - amount < min(a["UsefulLifeYears"] * 12 * 0.005, amount * 0.5) + 1e-9:
+                amount = r2(remaining)
+            if amount <= 0:
+                break
+            accum += amount
+            yy, mm = divmod(k, 12)
+            out.append({"AssetCode": a["AssetCode"], "AssetName": a["AssetName"], "AssetNameAr": a["AssetNameAr"], "CategoryName": a["CategoryName"],
+                        "CategoryNameAr": a["CategoryNameAr"], "Year": str(yy), "MonthKey": f"{yy}-{mm + 1:02d}", "Month": f"{names[mm]} {yy}",
+                        "Depreciation": amount, "ClosingNBV": r2((a["AcquisitionCost"] or 0) - accum)})
+    from .services.common import month_ar, _ctx
+    if getattr(_ctx, "lang", "en") == "ar":
+        for r in out:
+            r["Month"] = month_ar(r["Month"])
+            r["AssetName"] = r["AssetNameAr"] or r["AssetName"]; r["CategoryName"] = r["CategoryNameAr"] or r["CategoryName"]
+    return dict(columns=_cols(("Month", "Month", "text"), ("Year", "Year", "text"), ("AssetCode", "Asset", "text"), ("AssetName", "Name", "text"),
+                              ("CategoryName", "Group", "text"), ("Depreciation", "Depreciation", "money"), ("ClosingNBV", "Net book value", "money")),
+                rows=out, group_by="Month", totals=["Depreciation"], subtotal_only=["Depreciation"], order={"Month": "MonthKey"},
+                subtitle=f"{months} months from {first}")
 
 
 def depreciation_journal(con, p):
@@ -442,7 +499,7 @@ BUILDERS = {"custody-by-employee": custody_by_employee, "employees-directory": e
             "suppliers-directory": suppliers_directory, "supplier-purchases": supplier_purchases, "supplier-summary": supplier_summary,
             "maintenance-history": maintenance_history, "maintenance-cost": maintenance_cost, "maintenance-schedule": maintenance_schedule,
             "asset-register": asset_register, "asset-summary": asset_summary, "rollforward": rollforward,
-            "depreciation-schedule": depreciation_schedule, "depreciation-journal": depreciation_journal,
+            "depreciation-schedule": depreciation_schedule, "depreciation-journal": depreciation_journal, "depreciation-forecast": depreciation_forecast,
             "gl-balances": gl_balances, "disposals": disposals, "transactions": transactions_report,
             "fully-depreciated": fully_depreciated, "warranty-expiry": warranty_expiry}
 

@@ -8,6 +8,7 @@ export const REPORT_INFO = {
     "asset-summary": { title: "Fixed asset summary", desc: "Totals by group, location or cost center at a date." },
     rollforward: { title: "Fixed asset roll-forward", desc: "Opening balance, additions, disposals, depreciation and closing balance by group." },
     "depreciation-schedule": { title: "Depreciation schedule", desc: "Depreciation lines per asset and period for a fiscal year." },
+    "depreciation-forecast": { title: "Depreciation forecast", desc: "Depreciation still to come, month by month, for budgets: the same rules as the depreciation run." },
     "depreciation-journal": { title: "Fixed asset journal postings", desc: "Posted debit and credit lines to the ledger accounts." },
     "gl-balances": { title: "Ledger account balances", desc: "Fixed asset postings summarised by ledger account." },
     disposals: { title: "Disposals and gain / loss", desc: "Assets sold or scrapped, with net book value, proceeds and result." },
@@ -120,6 +121,7 @@ async function paramDefs(ids) {
                 { value: "asset", label: t("Asset") }, { value: "category", label: t("Fixed asset group") }, { value: "type", label: t("Type") }
             ] },
         days: { name: "days", label: "Days ahead", type: "number", step: "1" },
+        months: { name: "months", label: "Months ahead", type: "number", step: "1", required: true },
     };
     // every report filter is a searchable lookup: type part of a name instead of scrolling a list
     return ids.map((i) => (map[i].type === "select" ? { ...map[i], search: true } : map[i]));
@@ -171,7 +173,7 @@ export async function reportPage(root, a) {
     const title = t(REPORT_INFO[id]?.title || id);
     const defs = await paramDefs(meta.params);
     const L = await lookups();
-    const defaults = { as_of: today(), from: yearStart(), to: today(), fiscal_year: String(new Date().getFullYear()), group_by: "category", mgroup: "asset", days: "30" };
+    const defaults = { as_of: today(), from: yearStart(), to: today(), fiscal_year: String(new Date().getFullYear()), group_by: "category", mgroup: "asset", days: "30", months: "12" };
     const params = {};
     // "run" marks optional fields the user left empty on purpose; required ones always fall back to their default
     for (const d of defs)
